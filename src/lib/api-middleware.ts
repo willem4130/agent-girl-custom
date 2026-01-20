@@ -1,0 +1,77 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { ratelimit, strictRatelimit, getClientIdentifier } from './rate-limit'
+
+/**
+ * API Response helper
+ */
+export function apiResponse<T>(data: T, status = 200) {
+  return NextResponse.json(data, { status })
+}
+
+/**
+ * API Error response helper
+ */
+export function apiError(message: string, status = 400, details?: unknown) {
+  return NextResponse.json(
+    {
+      error: message,
+      details,
+    },
+    { status }
+  )
+}
+
+/**
+ * Rate limiting middleware
+ * @param request - Next.js request object
+ * @param strict - Use strict rate limiting (5 req/10s instead of 10 req/10s)
+ */
+export async function withRateLimit(request: NextRequest, strict = false) {
+  const limiter = strict ? strictRatelimit : ratelimit
+
+  // Skip rate limiting if Upstash is not configured
+  if (!limiter) {
+    return null
+  }
+
+  const identifier = getClientIdentifier(request)
+  const { success, limit, reset, remaining } = await limiter.limit(identifier)
+
+  if (!success) {
+    return apiError('Too many requests. Please try again later.', 429, {
+      limit,
+      remaining,
+      reset: new Date(reset).toISOString(),
+    })
+  }
+
+  return null // null means rate limit passed
+}
+
+/**
+ * API Key authentication middleware
+ * Checks for API key in Authorization header or x-api-key header
+ * Can be replaced with your preferred auth system (NextAuth, Clerk, etc.)
+ */
+export function withAuth(request: NextRequest) {
+  const authHeader = request.headers.get('authorization')
+  const apiKeyHeader = request.headers.get('x-api-key')
+
+  const apiKey = authHeader?.replace('Bearer ', '') || apiKeyHeader
+
+  // If no API_SECRET_KEY is configured, skip auth check (development mode)
+  if (!process.env.API_SECRET_KEY) {
+    console.warn('⚠️ API_SECRET_KEY not configured - API routes are unprotected!')
+    return null
+  }
+
+  if (!apiKey) {
+    return apiError('Missing API key. Provide via Authorization header or x-api-key header.', 401)
+  }
+
+  if (apiKey !== process.env.API_SECRET_KEY) {
+    return apiError('Invalid API key', 403)
+  }
+
+  return null // null means auth passed
+}
