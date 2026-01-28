@@ -51,6 +51,7 @@ import { handleSessionRoutes } from "./routes/sessions";
 import { handleDirectoryRoutes } from "./routes/directory";
 import { handleUserConfigRoutes } from "./routes/userConfig";
 import { handleCommandRoutes } from "./routes/commands";
+import { handleCopywritingRoutes } from "./routes/copywriting";
 import { handleWebSocketMessage } from "./websocket/messageHandlers";
 import type { ServerWebSocket, Server as ServerType } from "bun";
 
@@ -163,6 +164,12 @@ const server = Bun.serve({
     const commandResponse = await handleCommandRoutes(req, url);
     if (commandResponse) {
       return commandResponse;
+    }
+
+    // Try copywriting routes
+    const copywritingResponse = await handleCopywritingRoutes(req, url);
+    if (copywritingResponse) {
+      return copywritingResponse;
     }
 
     // Try to handle as static file
