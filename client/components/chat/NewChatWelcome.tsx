@@ -18,18 +18,29 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Send, Plus, X, Square } from 'lucide-react';
 import type { FileAttachment } from '../message/types';
 import { ModeSelector } from './ModeSelector';
 import { ModeIndicator } from './ModeIndicator';
 import type { SlashCommand } from '../../hooks/useWebSocket';
 import { CommandTextRenderer } from '../message/CommandTextRenderer';
+import { BrandSelector, BrandFormModal, BrandVoicePanel, MediaGenerationPanel } from '../copywriting';
+import { ContentTypeQuickSelect, type ContentType } from '../copywriting/ContentTypeSelector';
+import {
+  useBrandAPI,
+  type Brand,
+  type VoiceProfile,
+  type ScrapedContent,
+  type CreateBrandInput,
+  type UpdateBrandInput,
+  type VoiceAnalysis,
+} from '../../hooks/useBrandAPI';
 
 interface NewChatWelcomeProps {
   inputValue: string;
   onInputChange: (value: string) => void;
-  onSubmit: (files?: FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting') => void;
+  onSubmit: (files?: FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media') => void;
   onStop?: () => void;
   disabled?: boolean;
   isGenerating?: boolean;
@@ -37,7 +48,9 @@ interface NewChatWelcomeProps {
   onTogglePlanMode?: () => void;
   availableCommands?: SlashCommand[];
   onOpenBuildWizard?: () => void;
-  mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting';
+  mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media';
+  sessionId?: string;
+  pendingMessagesCount?: number;
 }
 
 const CAPABILITIES = [
@@ -48,14 +61,14 @@ const CAPABILITIES = [
   "I can analyze data and files"
 ];
 
-export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, disabled, isGenerating, isPlanMode, onTogglePlanMode, availableCommands = [], onOpenBuildWizard, mode }: NewChatWelcomeProps) {
+export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, disabled, isGenerating, isPlanMode, onTogglePlanMode, availableCommands = [], onOpenBuildWizard, mode, sessionId, pendingMessagesCount = 0 }: NewChatWelcomeProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([]);
   const [_isDraggingOver, setIsDraggingOver] = useState(false);
 
   // Mode selection state (synchronized with parent via props)
-  const [selectedMode, setSelectedMode] = useState<'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting'>(mode || 'general');
+  const [selectedMode, setSelectedMode] = useState<'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media'>(mode || 'general');
 
   // Sync local mode state with prop when it changes
   useEffect(() => {
@@ -64,6 +77,132 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
     }
   }, [mode]);
   const [modeIndicatorWidth, setModeIndicatorWidth] = useState(80);
+
+  // Brand management state (for copywriting mode)
+  const brandAPI = useBrandAPI();
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
+  const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
+  const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null);
+  const [voiceAnalysis, setVoiceAnalysis] = useState<VoiceAnalysis | null>(null);
+  const [scrapedContent, setScrapedContent] = useState<Map<string, ScrapedContent[]>>(new Map());
+  const [isBrandDataLoading, setIsBrandDataLoading] = useState(false);
+  const [selectedContentTypes, setSelectedContentTypes] = useState<ContentType[]>([]);
+
+  // Load brands when copywriting or media mode is selected
+  useEffect(() => {
+    if (selectedMode === 'copywriting' || selectedMode === 'media') {
+      loadBrands();
+    }
+  }, [selectedMode]);
+
+  // Load voice profile and scraped content when brand is selected
+  useEffect(() => {
+    if (selectedBrandId) {
+      loadBrandData(selectedBrandId);
+    } else {
+      setVoiceProfile(null);
+    }
+  }, [selectedBrandId]);
+
+  const loadBrands = useCallback(async () => {
+    const loadedBrands = await brandAPI.fetchBrands();
+    setBrands(loadedBrands);
+
+    // Load scraped content for all brands
+    const contentMap = new Map<string, ScrapedContent[]>();
+    for (const brand of loadedBrands) {
+      const content = await brandAPI.fetchScrapedContent(brand.id);
+      contentMap.set(brand.id, content);
+    }
+    setScrapedContent(contentMap);
+  }, [brandAPI]);
+
+  const loadBrandData = useCallback(async (brandId: string) => {
+    setIsBrandDataLoading(true);
+    try {
+      const [profile, analysis, content] = await Promise.all([
+        brandAPI.fetchVoiceProfile(brandId),
+        brandAPI.fetchVoiceAnalysis(brandId),
+        brandAPI.fetchScrapedContent(brandId),
+      ]);
+      setVoiceProfile(profile);
+      setVoiceAnalysis(analysis);
+      setScrapedContent((prev) => new Map(prev).set(brandId, content));
+    } finally {
+      setIsBrandDataLoading(false);
+    }
+  }, [brandAPI]);
+
+  const handleSelectBrand = (brandId: string) => {
+    setSelectedBrandId(brandId === selectedBrandId ? null : brandId);
+  };
+
+  const handleCreateBrand = () => {
+    setEditingBrand(null);
+    setIsBrandModalOpen(true);
+  };
+
+  const handleEditBrand = (brand: Brand) => {
+    setEditingBrand(brand);
+    setIsBrandModalOpen(true);
+  };
+
+  const handleSaveBrand = async (input: CreateBrandInput | UpdateBrandInput): Promise<Brand | null> => {
+    let savedBrand: Brand | null = null;
+
+    if (editingBrand) {
+      savedBrand = await brandAPI.updateBrand(editingBrand.id, input as UpdateBrandInput);
+    } else {
+      savedBrand = await brandAPI.createBrand(input as CreateBrandInput);
+    }
+
+    if (savedBrand) {
+      await loadBrands();
+      if (!editingBrand) {
+        setSelectedBrandId(savedBrand.id);
+      }
+    }
+
+    return savedBrand;
+  };
+
+  const handleDeleteBrand = async (brandId: string): Promise<boolean> => {
+    const success = await brandAPI.deleteBrand(brandId);
+    if (success) {
+      if (selectedBrandId === brandId) {
+        setSelectedBrandId(null);
+      }
+      await loadBrands();
+    }
+    return success;
+  };
+
+  const handleAnalyzeBrand = async (brandId: string): Promise<void> => {
+    // First scrape all brand URLs
+    await brandAPI.analyzeBrand(brandId);
+    // Then refresh the voice profile to generate scores from scraped content
+    await brandAPI.refreshVoiceProfile(brandId);
+    // Finally reload the brand data to show updated profile
+    await loadBrandData(brandId);
+  };
+
+  const handleRefreshVoiceProfile = async (): Promise<void> => {
+    if (!selectedBrandId) return;
+    // For quick re-scrape, use analyzeBrand which now handles priority brands (SCEX) with deep crawl
+    await brandAPI.analyzeBrand(selectedBrandId);
+    await brandAPI.refreshVoiceProfile(selectedBrandId);
+    await loadBrandData(selectedBrandId);
+  };
+
+  const handleDeepAnalyze = async (): Promise<void> => {
+    if (!selectedBrandId) return;
+    const result = await brandAPI.deepAnalyzeBrand(selectedBrandId, 30);
+    if (result?.success) {
+      await loadBrandData(selectedBrandId);
+    }
+  };
 
   // Slash command autocomplete state
   const [showCommandMenu, setShowCommandMenu] = useState(false);
@@ -333,13 +472,13 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
 
   return (
     <div
-      className="flex-1 flex items-center justify-center w-full"
+      className="flex-1 flex flex-col w-full overflow-y-auto"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="w-full max-w-4xl px-4">
+      <div className="w-full max-w-4xl px-4 mx-auto my-auto py-8">
         {/* Greeting */}
         <div className="flex flex-col gap-1 justify-center items-center mb-8">
           <div className="flex flex-row justify-center gap-3 w-fit px-5">
@@ -530,8 +669,14 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
                 </div>
 
                 {/* Send/Stop Button */}
-                <div className="flex self-end space-x-1 shrink-0">
-                  {isGenerating ? (
+                <div className="flex self-end space-x-1 shrink-0 items-center gap-2">
+                  {/* Pending messages indicator */}
+                  {pendingMessagesCount > 0 && (
+                    <span className="text-xs text-amber-400 bg-amber-400/10 px-2 py-1 rounded-full">
+                      {pendingMessagesCount} queued
+                    </span>
+                  )}
+                  {isGenerating && (
                     <button
                       type="button"
                       onClick={onStop}
@@ -540,20 +685,19 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
                     >
                       <Square className="size-4" fill="currentColor" />
                     </button>
-                  ) : (
-                    <button
-                      type="submit"
-                      disabled={disabled || !inputValue.trim()}
-                      className={`transition rounded-lg p-2 self-center ${
-                        !disabled && inputValue.trim()
-                          ? 'send-button-active'
-                          : 'bg-gray-500 text-white/40 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600'
-                      }`}
-                      aria-label="Send Message"
-                    >
-                      <Send className="size-4" />
-                    </button>
                   )}
+                  <button
+                    type="submit"
+                    disabled={disabled || !inputValue.trim()}
+                    className={`transition rounded-lg p-2 self-center ${
+                      !disabled && inputValue.trim()
+                        ? 'send-button-active'
+                        : 'bg-gray-500 text-white/40 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600'
+                    }`}
+                    aria-label={isGenerating ? "Queue Message" : "Send Message"}
+                  >
+                    <Send className="size-4" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -563,8 +707,97 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
           <div className="mt-6">
             <ModeSelector selectedMode={selectedMode} onSelectMode={setSelectedMode} onOpenBuildWizard={onOpenBuildWizard} />
           </div>
+
+          {/* Brand Selector for Copywriting Mode */}
+          {selectedMode === 'copywriting' && (
+            <>
+              <BrandSelector
+                brands={brands}
+                selectedBrandId={selectedBrandId}
+                onSelectBrand={handleSelectBrand}
+                onCreateBrand={handleCreateBrand}
+                onEditBrand={handleEditBrand}
+                scrapedContent={scrapedContent}
+                isLoading={brandAPI.isLoading}
+              />
+
+              {/* Content Type Quick Select - always visible in copywriting mode */}
+              <ContentTypeQuickSelect
+                selectedTypes={selectedContentTypes}
+                onToggle={(type) => {
+                  setSelectedContentTypes((prev) => {
+                    // If already selected, remove it (and any auto-added types)
+                    if (prev.includes(type)) {
+                      // If removing article, also remove auto-added linkedin_post
+                      if (type === 'article' && prev.includes('linkedin_post')) {
+                        return prev.filter((t) => t !== type && t !== 'linkedin_post');
+                      }
+                      return prev.filter((t) => t !== type);
+                    }
+
+                    // Auto-add LinkedIn post when selecting Article
+                    if (type === 'article' && !prev.includes('linkedin_post')) {
+                      return [...prev, type, 'linkedin_post'];
+                    }
+
+                    return [...prev, type];
+                  });
+                }}
+                disabled={brandAPI.isLoading}
+              />
+
+              {/* Voice Profile Panel when brand is selected */}
+              {selectedBrandId && (
+                <BrandVoicePanel
+                  voiceProfile={voiceProfile}
+                  voiceAnalysis={voiceAnalysis}
+                  scrapedContent={scrapedContent.get(selectedBrandId) || []}
+                  isLoading={isBrandDataLoading}
+                  onRefresh={handleRefreshVoiceProfile}
+                  onDeepAnalyze={handleDeepAnalyze}
+                />
+              )}
+            </>
+          )}
+
+          {/* Brand Selector for Media Mode */}
+          {selectedMode === 'media' && (
+            <>
+              <BrandSelector
+                brands={brands}
+                selectedBrandId={selectedBrandId}
+                onSelectBrand={handleSelectBrand}
+                onCreateBrand={handleCreateBrand}
+                onEditBrand={handleEditBrand}
+                scrapedContent={scrapedContent}
+                isLoading={brandAPI.isLoading}
+              />
+
+              {/* Media Generation Panel when brand is selected */}
+              {selectedBrandId && (
+                <div className="mt-4">
+                  <MediaGenerationPanel brandId={selectedBrandId} />
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
+
+      {/* Brand Form Modal */}
+      {isBrandModalOpen && (
+        <BrandFormModal
+          brand={editingBrand}
+          sessionId={sessionId || 'global'}
+          onSave={handleSaveBrand}
+          onDelete={editingBrand ? handleDeleteBrand : undefined}
+          onAnalyze={handleAnalyzeBrand}
+          onClose={() => {
+            setIsBrandModalOpen(false);
+            setEditingBrand(null);
+          }}
+        />
+      )}
     </div>
   );
 }

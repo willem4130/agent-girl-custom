@@ -19,10 +19,10 @@
  */
 
 import React, { useRef, useEffect } from 'react';
-import { MessageCircle, Code, Target, Zap, Pencil } from 'lucide-react';
+import { MessageCircle, Code, Target, Zap, Pencil, Film } from 'lucide-react';
 
 interface ModeIndicatorProps {
-  mode: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting';
+  mode: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media';
   onWidthChange?: (width: number) => void;
 }
 
@@ -55,6 +55,12 @@ const MODE_CONFIGS = {
     name: 'Copywriting',
     icon: Pencil,
     gradient: 'linear-gradient(90deg, #FF6B6B 0%, #FFE66D 25%, #ffffff 50%, #FFE66D 75%, #FF6B6B 100%)',
+    textColor: '#000000',
+  },
+  'media': {
+    name: 'Media',
+    icon: Film,
+    gradient: 'linear-gradient(90deg, #6B5CE7 0%, #A855F7 25%, #ffffff 50%, #A855F7 75%, #6B5CE7 100%)',
     textColor: '#000000',
   },
 };

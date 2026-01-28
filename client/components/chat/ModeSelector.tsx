@@ -19,10 +19,10 @@
  */
 
 import React, { useState } from 'react';
-import { MessageCircle, Code, Target, Zap, Hammer, Pencil } from 'lucide-react';
+import { MessageCircle, Code, Target, Zap, Hammer, Pencil, Film } from 'lucide-react';
 
 interface ModeOption {
-  id: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'build';
+  id: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media' | 'build';
   name: string;
   description: string;
   icon: React.ReactNode;
@@ -67,6 +67,13 @@ const MODES: ModeOption[] = [
     gradient: 'linear-gradient(90deg, #FF6B6B 0%, #FFE66D 25%, #ffffff 50%, #FFE66D 75%, #FF6B6B 100%)',
   },
   {
+    id: 'media',
+    name: 'Media',
+    description: 'AI-powered image & video generation',
+    icon: <Film className="size-4" />,
+    gradient: 'linear-gradient(90deg, #6B5CE7 0%, #A855F7 25%, #ffffff 50%, #A855F7 75%, #6B5CE7 100%)',
+  },
+  {
     id: 'build',
     name: 'Build',
     description: 'Create projects with guided setup',
@@ -77,8 +84,8 @@ const MODES: ModeOption[] = [
 ];
 
 interface ModeSelectorProps {
-  selectedMode: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting';
-  onSelectMode: (mode: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting') => void;
+  selectedMode: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media';
+  onSelectMode: (mode: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media') => void;
   onOpenBuildWizard?: () => void;
 }
 
@@ -99,7 +106,7 @@ export function ModeSelector({ selectedMode, onSelectMode, onOpenBuildWizard }: 
     if (mode.isBuildMode) {
       onOpenBuildWizard?.();
     } else {
-      onSelectMode(mode.id as 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting');
+      onSelectMode(mode.id as 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media');
     }
   };
 

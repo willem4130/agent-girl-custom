@@ -24,10 +24,19 @@ import {
   extractLinkedInCompanyId,
 } from '../scraping/linkedin-scraper';
 import {
-  scrapeWebsite,
   scrapeWebsiteDeep,
   extractTextForAnalysis,
 } from '../scraping/website-scraper';
+import {
+  deepCrawl,
+  getCrawlSummary,
+  type CrawledPage,
+} from '../scraping/deep-crawler';
+import {
+  analyzeContent,
+  generateConciseInstructions,
+  type VoiceAnalysisResult,
+} from '../scraping/content-analyzer';
 
 /**
  * Handle copywriting-related API routes
@@ -160,7 +169,14 @@ export async function handleCopywritingRoutes(
       }
 
       // Start async scraping (run in background)
-      const results = await scrapeAllBrandUrls(brand);
+      // Pass brand name so priority brands (like SCEX) get deep treatment
+      const results = await scrapeAllBrandUrls({
+        name: brand.name,
+        website_url: brand.website_url,
+        instagram_url: brand.instagram_url,
+        facebook_url: brand.facebook_url,
+        linkedin_url: brand.linkedin_url,
+      });
 
       // Store scraped content
       for (const result of results) {
@@ -185,6 +201,236 @@ export async function handleCopywritingRoutes(
           error: r.error,
         })),
       });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/copywriting/brands/:id/deep-analyze - Deep crawl + LLM analysis
+  const deepAnalyzeMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/deep-analyze$/
+  );
+  if (deepAnalyzeMatch && req.method === 'POST') {
+    try {
+      const brandId = deepAnalyzeMatch[1];
+      const brand = copywritingDb.getBrandConfig(brandId);
+
+      if (!brand) {
+        return jsonResponse({ error: 'Brand not found' }, 404);
+      }
+
+      // Parse request body for options
+      let maxPages = 25;
+      let runLlmAnalysis = true;
+      try {
+        const body = (await req.json()) as { maxPages?: number; runLlmAnalysis?: boolean };
+        if (body.maxPages) maxPages = Math.min(body.maxPages, 100);
+        if (body.runLlmAnalysis !== undefined) runLlmAnalysis = body.runLlmAnalysis;
+      } catch {
+        // Use defaults if no body or invalid JSON
+      }
+
+      console.log(`[CopywritingAPI] Starting deep analysis for brand ${brand.name}`);
+
+      // Step 1: Deep crawl website if URL is provided
+      let crawledPages: CrawledPage[] = [];
+      if (brand.website_url) {
+        console.log(`[CopywritingAPI] Deep crawling ${brand.website_url} (max ${maxPages} pages)`);
+        crawledPages = await deepCrawl(brand.website_url, { maxPages });
+
+        // Store crawled pages in database
+        for (const page of crawledPages) {
+          copywritingDb.addScrapedPage(brandId, page.url, {
+            pageType: page.pageType,
+            title: page.title,
+            extractedContent: page.extractedContent as unknown as Record<string, unknown>,
+            wordCount: page.wordCount,
+            detectedTopics: page.detectedTopics,
+            crawlDepth: page.crawlDepth,
+          });
+        }
+
+        console.log(`[CopywritingAPI] Stored ${crawledPages.length} pages`);
+      }
+
+      // Step 2: Scrape social media (existing logic)
+      const socialResults = await scrapeAllBrandUrls({
+        instagram_url: brand.instagram_url,
+        facebook_url: brand.facebook_url,
+        linkedin_url: brand.linkedin_url,
+      });
+
+      // Store social content
+      for (const result of socialResults) {
+        if (result.success && result.content) {
+          copywritingDb.addScrapedContent(brandId, result.platform, result.content, {
+            contentType: result.contentType,
+            metadata: result.metadata,
+          });
+        }
+      }
+
+      // Step 3: Run LLM analysis if requested
+      let voiceAnalysis: VoiceAnalysisResult | null = null;
+      if (runLlmAnalysis && (crawledPages.length > 0 || socialResults.some((r) => r.success))) {
+        console.log('[CopywritingAPI] Running LLM content analysis...');
+
+        // Get existing voice profile for reference
+        const existingProfile = copywritingDb.getCurrentVoiceProfile(brandId);
+
+        // Get social content from database
+        const socialContent = copywritingDb.getScrapedContent(brandId);
+
+        // Run analysis
+        voiceAnalysis = await analyzeContent(
+          crawledPages,
+          {
+            brandName: brand.name,
+            websiteUrl: brand.website_url,
+            language: brand.language,
+            existingToneScores: existingProfile
+              ? {
+                  formality: existingProfile.formality_score ?? undefined,
+                  humor: existingProfile.humor_score ?? undefined,
+                  energy: existingProfile.energy_score ?? undefined,
+                  authority: existingProfile.authority_score ?? undefined,
+                }
+              : undefined,
+          },
+          socialContent
+        );
+
+        // Store voice analysis in database
+        copywritingDb.createOrUpdateVoiceAnalysis(brandId, {
+          voiceDescription: voiceAnalysis.voiceDescription,
+          writingStylePatterns: voiceAnalysis.writingStylePatterns,
+          vocabularyPreferences: voiceAnalysis.vocabularyPreferences,
+          exampleHooks: voiceAnalysis.exampleHooks,
+          generatedGuidelines: voiceAnalysis.generatedGuidelines,
+          toneDimensions: voiceAnalysis.toneDimensions,
+          samplesAnalyzed: voiceAnalysis.samplesAnalyzed,
+          confidenceScore: voiceAnalysis.confidenceScore,
+        });
+
+        // Also update the basic voice profile with new scores
+        copywritingDb.createVoiceProfile(brandId, {
+          formality_score: voiceAnalysis.toneDimensions.formality,
+          humor_score: voiceAnalysis.toneDimensions.humor,
+          energy_score: voiceAnalysis.toneDimensions.energy,
+          authority_score: voiceAnalysis.toneDimensions.authority,
+          samples_analyzed: voiceAnalysis.samplesAnalyzed,
+          confidence_score: voiceAnalysis.confidenceScore,
+          winning_hooks: JSON.stringify(voiceAnalysis.exampleHooks),
+        });
+
+        console.log('[CopywritingAPI] Voice analysis complete');
+      }
+
+      // Build response
+      const crawlSummary = crawledPages.length > 0 ? getCrawlSummary(crawledPages) : null;
+
+      return jsonResponse({
+        success: true,
+        crawl: crawlSummary
+          ? {
+              pagesScraped: crawlSummary.totalPages,
+              totalWords: crawlSummary.totalWords,
+              pageTypes: crawlSummary.pageTypes,
+              detectedTopics: crawlSummary.allTopics,
+            }
+          : null,
+        social: socialResults.map((r) => ({
+          platform: r.platform,
+          success: r.success,
+          error: r.error,
+        })),
+        voiceAnalysis: voiceAnalysis
+          ? {
+              voiceDescription: voiceAnalysis.voiceDescription,
+              toneDimensions: voiceAnalysis.toneDimensions,
+              confidenceScore: voiceAnalysis.confidenceScore,
+              samplesAnalyzed: voiceAnalysis.samplesAnalyzed,
+            }
+          : null,
+      });
+    } catch (error) {
+      console.error('[CopywritingAPI] Deep analysis error:', error);
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/brands/:id/voice-analysis - Get LLM-generated voice analysis
+  const voiceAnalysisMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/voice-analysis$/
+  );
+  if (voiceAnalysisMatch && req.method === 'GET') {
+    try {
+      const analysis = copywritingDb.getVoiceAnalysis(voiceAnalysisMatch[1]);
+
+      if (!analysis) {
+        return jsonResponse({ error: 'Voice analysis not found. Run /deep-analyze first.' }, 404);
+      }
+
+      // Parse JSON fields
+      const response = {
+        ...analysis,
+        writing_style_patterns: JSON.parse(analysis.writing_style_patterns || '{}'),
+        vocabulary_preferences: JSON.parse(analysis.vocabulary_preferences || '{}'),
+        example_hooks: JSON.parse(analysis.example_hooks || '[]'),
+        tone_dimensions: JSON.parse(analysis.tone_dimensions || '{}'),
+      };
+
+      return jsonResponse(response);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/brands/:id/voice-analysis/instructions - Get concise instructions
+  const voiceInstructionsMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/voice-analysis\/instructions$/
+  );
+  if (voiceInstructionsMatch && req.method === 'GET') {
+    try {
+      const analysis = copywritingDb.getVoiceAnalysis(voiceInstructionsMatch[1]);
+
+      if (!analysis) {
+        return jsonResponse({ error: 'Voice analysis not found. Run /deep-analyze first.' }, 404);
+      }
+
+      // Convert to VoiceAnalysisResult format
+      const voiceResult: VoiceAnalysisResult = {
+        voiceDescription: analysis.voice_description,
+        toneDimensions: JSON.parse(analysis.tone_dimensions || '{}'),
+        writingStylePatterns: JSON.parse(analysis.writing_style_patterns || '{}'),
+        vocabularyPreferences: JSON.parse(analysis.vocabulary_preferences || '{}'),
+        exampleHooks: JSON.parse(analysis.example_hooks || '[]'),
+        exampleCTAs: [],
+        generatedGuidelines: analysis.generated_guidelines,
+        samplesAnalyzed: analysis.samples_analyzed,
+        confidenceScore: analysis.confidence_score,
+      };
+
+      const maxLength = parseInt(url.searchParams.get('maxLength') || '800', 10);
+      const instructions = generateConciseInstructions(voiceResult, maxLength);
+
+      return jsonResponse({ instructions });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/brands/:id/scraped-pages - Get crawled pages
+  const scrapedPagesMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/scraped-pages$/
+  );
+  if (scrapedPagesMatch && req.method === 'GET') {
+    try {
+      const pageType = url.searchParams.get('pageType') || undefined;
+      const pages = copywritingDb.getScrapedPages(scrapedPagesMatch[1], pageType);
+      const count = copywritingDb.getScrapedPagesCount(scrapedPagesMatch[1]);
+
+      return jsonResponse({ pages, totalCount: count });
     } catch (error) {
       return jsonResponse({ error: getErrorMessage(error) }, 500);
     }
@@ -289,10 +535,22 @@ export async function handleCopywritingRoutes(
       // Combine all content for analysis
       const allText = content.map((c) => c.raw_content).join('\n\n');
 
-      // Create placeholder profile (actual analysis would use Claude)
+      // Analyze content to generate voice profile scores
+      // In production, this would use Claude for sophisticated analysis
+      const analysisResult = analyzeContentForVoiceProfile(allText, content.length);
+
+      // Create voice profile with analyzed scores
       const profile = copywritingDb.createVoiceProfile(brandId, {
+        formality_score: analysisResult.formality,
+        humor_score: analysisResult.humor,
+        energy_score: analysisResult.energy,
+        authority_score: analysisResult.authority,
+        vocabulary_complexity: analysisResult.vocabularyComplexity,
+        avg_sentence_length: analysisResult.avgSentenceLength,
+        emoji_density: analysisResult.emojiDensity,
+        hashtag_density: analysisResult.hashtagDensity,
         samples_analyzed: content.length,
-        confidence_score: content.length >= 10 ? 0.8 : 0.5,
+        confidence_score: content.length >= 10 ? 0.8 : content.length >= 5 ? 0.6 : 0.4,
       });
 
       return jsonResponse(profile);
@@ -568,6 +826,251 @@ export async function handleCopywritingRoutes(
     }
   }
 
+  // ============================================================================
+  // REFERENCE MATERIALS ENDPOINTS
+  // ============================================================================
+
+  // POST /api/copywriting/brands/:id/references - Add reference material
+  const addReferenceMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/references$/
+  );
+  if (addReferenceMatch && req.method === 'POST') {
+    try {
+      const brandId = addReferenceMatch[1];
+      const body = (await req.json()) as {
+        materialType: 'url' | 'file' | 'text' | 'project';
+        title: string;
+        content: string;
+        sourceUrl?: string;
+        tags?: string[];
+      };
+
+      if (!body.materialType || !body.title || !body.content) {
+        return jsonResponse(
+          { error: 'materialType, title, and content are required' },
+          400
+        );
+      }
+
+      const reference = copywritingDb.addReferenceMaterial(brandId, {
+        materialType: body.materialType,
+        title: body.title,
+        content: body.content,
+        sourceUrl: body.sourceUrl,
+        tags: body.tags,
+      });
+
+      return jsonResponse(reference, 201);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/brands/:id/references - List reference materials
+  if (addReferenceMatch && req.method === 'GET') {
+    try {
+      const materialType = url.searchParams.get('type') || undefined;
+      const references = copywritingDb.getReferenceMaterials(
+        addReferenceMatch[1],
+        materialType
+      );
+      return jsonResponse({ references });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/references/:id - Get single reference
+  const getReferenceMatch = pathname.match(
+    /^\/api\/copywriting\/references\/([^/]+)$/
+  );
+  if (getReferenceMatch && req.method === 'GET') {
+    try {
+      const reference = copywritingDb.getReferenceMaterial(getReferenceMatch[1]);
+      if (!reference) {
+        return jsonResponse({ error: 'Reference not found' }, 404);
+      }
+      return jsonResponse(reference);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // PUT /api/copywriting/references/:id - Update reference
+  if (getReferenceMatch && req.method === 'PUT') {
+    try {
+      const body = (await req.json()) as {
+        title?: string;
+        content?: string;
+        tags?: string[];
+      };
+
+      const success = copywritingDb.updateReferenceMaterial(getReferenceMatch[1], {
+        title: body.title,
+        content: body.content,
+        tags: body.tags ? JSON.stringify(body.tags) : undefined,
+      });
+
+      if (!success) {
+        return jsonResponse({ error: 'Reference not found' }, 404);
+      }
+
+      const reference = copywritingDb.getReferenceMaterial(getReferenceMatch[1]);
+      return jsonResponse(reference);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // DELETE /api/copywriting/references/:id - Delete reference
+  if (getReferenceMatch && req.method === 'DELETE') {
+    try {
+      const success = copywritingDb.deleteReferenceMaterial(getReferenceMatch[1]);
+      return jsonResponse({ success });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // ============================================================================
+  // CONTENT GENERATION SESSION ENDPOINTS
+  // ============================================================================
+
+  // POST /api/copywriting/sessions - Create generation session
+  if (pathname === '/api/copywriting/sessions' && req.method === 'POST') {
+    try {
+      const body = (await req.json()) as {
+        brandId: string;
+        contentType: 'linkedin_post' | 'facebook_post' | 'instagram_post' | 'article' | 'newsletter' | 'custom';
+      };
+
+      if (!body.brandId || !body.contentType) {
+        return jsonResponse({ error: 'brandId and contentType are required' }, 400);
+      }
+
+      const session = copywritingDb.createSession(body.brandId, body.contentType);
+      return jsonResponse(session, 201);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/sessions/:id - Get session state
+  const sessionMatch = pathname.match(/^\/api\/copywriting\/sessions\/([^/]+)$/);
+  if (sessionMatch && req.method === 'GET') {
+    try {
+      const session = copywritingDb.getSession(sessionMatch[1]);
+      if (!session) {
+        return jsonResponse({ error: 'Session not found' }, 404);
+      }
+
+      // Parse JSON fields
+      const response = {
+        ...session,
+        briefing_data: JSON.parse(session.briefing_data || '{}'),
+        generated_drafts: JSON.parse(session.generated_drafts || '[]'),
+        feedback_history: JSON.parse(session.feedback_history || '[]'),
+      };
+
+      return jsonResponse(response);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // PUT /api/copywriting/sessions/:id - Update session
+  if (sessionMatch && req.method === 'PUT') {
+    try {
+      const body = (await req.json()) as {
+        workflowStep?: 'brand_select' | 'content_type' | 'briefing' | 'clarification' | 'generation' | 'refinement' | 'completed';
+        briefingData?: Record<string, unknown>;
+        generatedDrafts?: unknown[];
+        feedbackHistory?: unknown[];
+      };
+
+      const success = copywritingDb.updateSession(sessionMatch[1], {
+        workflowStep: body.workflowStep,
+        briefingData: body.briefingData,
+        generatedDrafts: body.generatedDrafts,
+        feedbackHistory: body.feedbackHistory,
+      });
+
+      if (!success) {
+        return jsonResponse({ error: 'Session not found' }, 404);
+      }
+
+      const session = copywritingDb.getSession(sessionMatch[1]);
+      return jsonResponse(session);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/copywriting/sessions/:id/feedback - Add feedback to session
+  const sessionFeedbackMatch = pathname.match(
+    /^\/api\/copywriting\/sessions\/([^/]+)\/feedback$/
+  );
+  if (sessionFeedbackMatch && req.method === 'POST') {
+    try {
+      const body = (await req.json()) as {
+        draftIndex: number;
+        feedback: string;
+        refinedDraft?: string;
+      };
+
+      if (body.draftIndex === undefined || !body.feedback) {
+        return jsonResponse({ error: 'draftIndex and feedback are required' }, 400);
+      }
+
+      const success = copywritingDb.addSessionFeedback(sessionFeedbackMatch[1], {
+        draft_index: body.draftIndex,
+        feedback: body.feedback,
+        refined_draft: body.refinedDraft,
+      });
+
+      if (!success) {
+        return jsonResponse({ error: 'Session not found' }, 404);
+      }
+
+      const session = copywritingDb.getSession(sessionFeedbackMatch[1]);
+      return jsonResponse(session);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/copywriting/sessions/:id/complete - Mark session complete
+  const sessionCompleteMatch = pathname.match(
+    /^\/api\/copywriting\/sessions\/([^/]+)\/complete$/
+  );
+  if (sessionCompleteMatch && req.method === 'POST') {
+    try {
+      const success = copywritingDb.completeSession(sessionCompleteMatch[1]);
+
+      if (!success) {
+        return jsonResponse({ error: 'Session not found' }, 404);
+      }
+
+      const session = copywritingDb.getSession(sessionCompleteMatch[1]);
+      return jsonResponse(session);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/brands/:id/sessions - Get active sessions for brand
+  const brandSessionsMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/sessions$/
+  );
+  if (brandSessionsMatch && req.method === 'GET') {
+    try {
+      const sessions = copywritingDb.getActiveSessions(brandSessionsMatch[1]);
+      return jsonResponse({ sessions });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
   // Route not handled
   return undefined;
 }
@@ -691,7 +1194,87 @@ async function scrapePlatform(
   }
 }
 
+/**
+ * Analyze text content to extract voice profile metrics
+ * In production, this would use Claude for sophisticated analysis
+ */
+function analyzeContentForVoiceProfile(
+  text: string,
+  _sampleCount: number
+): {
+  formality: number;
+  humor: number;
+  energy: number;
+  authority: number;
+  vocabularyComplexity: string;
+  avgSentenceLength: number;
+  emojiDensity: number;
+  hashtagDensity: number;
+} {
+  const words = text.split(/\s+/).filter((w) => w.length > 0);
+  const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+  const wordCount = words.length;
+  const sentenceCount = Math.max(sentences.length, 1);
+
+  // Calculate average sentence length
+  const avgSentenceLength = wordCount / sentenceCount;
+
+  // Count emojis (basic regex for common emoji ranges)
+  const emojiRegex = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
+  const emojiCount = (text.match(emojiRegex) || []).length;
+  const emojiDensity = wordCount > 0 ? (emojiCount / wordCount) * 100 : 0;
+
+  // Count hashtags
+  const hashtagCount = (text.match(/#\w+/g) || []).length;
+  const hashtagDensity = wordCount > 0 ? (hashtagCount / wordCount) * 100 : 0;
+
+  // Analyze formality (based on word length, sentence structure)
+  const longWords = words.filter((w) => w.length > 8).length;
+  const longWordRatio = wordCount > 0 ? longWords / wordCount : 0;
+  const formality = Math.min(100, Math.round(40 + longWordRatio * 200 + (avgSentenceLength > 15 ? 20 : 0)));
+
+  // Analyze energy (exclamation marks, caps, action words)
+  const exclamationCount = (text.match(/!/g) || []).length;
+  const capsWords = words.filter((w) => w === w.toUpperCase() && w.length > 2).length;
+  const energy = Math.min(100, Math.round(30 + exclamationCount * 3 + capsWords * 5 + (emojiCount > 0 ? 15 : 0)));
+
+  // Analyze humor (informal patterns, playful punctuation)
+  const laughPatterns = (text.match(/haha|lol|😂|🤣|😅/gi) || []).length;
+  const playfulPunctuation = (text.match(/\.{3}|!{2,}|\?{2,}/g) || []).length;
+  const humor = Math.min(100, Math.round(20 + laughPatterns * 10 + playfulPunctuation * 5 + emojiCount * 2));
+
+  // Analyze authority (declarative statements, statistics, expertise markers)
+  const numberCount = (text.match(/\d+%?/g) || []).length;
+  const expertiseMarkers = (text.match(/\b(research|study|expert|proven|data|results|analysis)\b/gi) || []).length;
+  const authority = Math.min(100, Math.round(35 + numberCount * 3 + expertiseMarkers * 8 + formality * 0.3));
+
+  // Determine vocabulary complexity
+  let vocabularyComplexity: string;
+  if (longWordRatio > 0.15 || avgSentenceLength > 20) {
+    vocabularyComplexity = 'technical';
+  } else if (longWordRatio > 0.08 || avgSentenceLength > 12) {
+    vocabularyComplexity = 'moderate';
+  } else {
+    vocabularyComplexity = 'simple';
+  }
+
+  return {
+    formality: Math.max(0, Math.min(100, formality)),
+    humor: Math.max(0, Math.min(100, humor)),
+    energy: Math.max(0, Math.min(100, energy)),
+    authority: Math.max(0, Math.min(100, authority)),
+    vocabularyComplexity,
+    avgSentenceLength: Math.round(avgSentenceLength * 10) / 10,
+    emojiDensity: Math.round(emojiDensity * 100) / 100,
+    hashtagDensity: Math.round(hashtagDensity * 100) / 100,
+  };
+}
+
+// Brands that should always get deep treatment
+const PRIORITY_BRANDS = ['scex', 'kenkai'];
+
 async function scrapeAllBrandUrls(brand: {
+  name?: string;
   website_url?: string;
   instagram_url?: string;
   facebook_url?: string;
@@ -699,8 +1282,17 @@ async function scrapeAllBrandUrls(brand: {
 }): Promise<ScrapeResult[]> {
   const tasks: Promise<ScrapeResult>[] = [];
 
+  // Check if this is a priority brand that deserves deep treatment
+  const isPriorityBrand = brand.name &&
+    PRIORITY_BRANDS.some(pb => brand.name!.toLowerCase().includes(pb));
+
   if (brand.website_url) {
-    tasks.push(scrapePlatform('website', brand.website_url));
+    if (isPriorityBrand) {
+      // Priority brands get deep crawl treatment
+      tasks.push(scrapeWebsiteDeepWithDeepCrawl(brand.website_url));
+    } else {
+      tasks.push(scrapePlatform('website', brand.website_url));
+    }
   }
   if (brand.instagram_url) {
     tasks.push(scrapePlatform('instagram', brand.instagram_url));
@@ -713,4 +1305,50 @@ async function scrapeAllBrandUrls(brand: {
   }
 
   return Promise.all(tasks);
+}
+
+/**
+ * Deep crawl for priority brands - uses the full deep crawler
+ */
+async function scrapeWebsiteDeepWithDeepCrawl(url: string): Promise<ScrapeResult> {
+  try {
+    console.log(`[CopywritingAPI] Priority brand detected - using deep crawl for ${url}`);
+    const pages = await deepCrawl(url, { maxPages: 30 }); // Extra pages for priority brands
+
+    // Extract all text content from crawled pages
+    const content = pages.map(page => {
+      const parts: string[] = [];
+      parts.push(`=== ${page.title} (${page.pageType}) ===`);
+      if (page.extractedContent.meta.description) {
+        parts.push(`Description: ${page.extractedContent.meta.description}`);
+      }
+      for (const h1 of page.extractedContent.headings.h1) {
+        parts.push(`# ${h1}`);
+      }
+      for (const h2 of page.extractedContent.headings.h2) {
+        parts.push(`## ${h2}`);
+      }
+      for (const p of page.extractedContent.paragraphs.slice(0, 15)) {
+        parts.push(p);
+      }
+      return parts.join('\n');
+    }).join('\n\n---\n\n');
+
+    return {
+      platform: 'website',
+      success: true,
+      content,
+      contentType: 'deep-crawl',
+      metadata: {
+        pagesScraped: pages.length,
+        pageTypes: pages.reduce((acc, p) => {
+          acc[p.pageType] = (acc[p.pageType] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>),
+        totalWords: pages.reduce((acc, p) => acc + p.wordCount, 0),
+      },
+    };
+  } catch (error) {
+    return { platform: 'website', success: false, error: getErrorMessage(error) };
+  }
 }

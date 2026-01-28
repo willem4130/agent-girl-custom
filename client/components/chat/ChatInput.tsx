@@ -32,7 +32,7 @@ import { getModelConfig } from '../../config/models';
 interface ChatInputProps {
   value: string;
   onChange: (value: string) => void;
-  onSubmit: (files?: FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting') => void;
+  onSubmit: (files?: FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media') => void;
   onStop?: () => void;
   disabled?: boolean;
   isGenerating?: boolean;
@@ -41,7 +41,7 @@ interface ChatInputProps {
   onTogglePlanMode?: () => void;
   backgroundProcesses?: BackgroundProcess[];
   onKillProcess?: (bashId: string) => void;
-  mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting';
+  mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media';
   availableCommands?: SlashCommand[];
   contextUsage?: {
     inputTokens: number;
@@ -49,9 +49,10 @@ interface ChatInputProps {
     contextPercentage: number;
   };
   selectedModel?: string;
+  pendingMessagesCount?: number;
 }
 
-export function ChatInput({ value, onChange, onSubmit, onStop, disabled, isGenerating, placeholder, isPlanMode, onTogglePlanMode, backgroundProcesses: _backgroundProcesses = [], onKillProcess: _onKillProcess, mode, availableCommands = [], contextUsage, selectedModel }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, onStop, disabled, isGenerating, placeholder, isPlanMode, onTogglePlanMode, backgroundProcesses: _backgroundProcesses = [], onKillProcess: _onKillProcess, mode, availableCommands = [], contextUsage, selectedModel, pendingMessagesCount = 0 }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([]);
@@ -601,26 +602,31 @@ export function ChatInput({ value, onChange, onSubmit, onStop, disabled, isGener
                 );
               })()}
 
-              {isGenerating ? (
+              {/* Pending messages indicator */}
+              {pendingMessagesCount > 0 && (
+                <span className="text-xs text-amber-400 bg-amber-400/10 px-2 py-1 rounded-full mr-1">
+                  {pendingMessagesCount} queued
+                </span>
+              )}
+              {isGenerating && (
                 <button
                   onClick={onStop}
-                  className="send-button stop-button-active"
+                  className="send-button stop-button-active mr-1"
                   title="Stop generating"
                   type="button"
                 >
                   <Square size={17} fill="currentColor" />
                 </button>
-              ) : (
-                <button
-                  onClick={handleSubmit}
-                  disabled={disabled || !value.trim()}
-                  className={`send-button ${!disabled && value.trim() ? 'send-button-active' : ''}`}
-                  title="Send message"
-                  type="submit"
-                >
-                  <Send size={17} />
-                </button>
               )}
+              <button
+                onClick={handleSubmit}
+                disabled={disabled || !value.trim()}
+                className={`send-button ${!disabled && value.trim() ? 'send-button-active' : ''}`}
+                title={isGenerating ? "Queue message" : "Send message"}
+                type="submit"
+              >
+                <Send size={17} />
+              </button>
             </div>
           </div>
         </div>

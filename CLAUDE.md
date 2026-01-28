@@ -1,30 +1,53 @@
 # Agent Girl
 
-A desktop-first chat interface for Claude Agent SDK with real-time streaming, persistent sessions, and specialized sub-agents, running locally with full file system access.
+Desktop-first chat interface for Claude Agent SDK with real-time streaming, persistent sessions, and specialized sub-agents running locally with full file system access.
+
+## Tech Stack
+
+Bun + React 19 + TypeScript + Tailwind CSS + Radix UI + SQLite
 
 ## Project Structure
 
 ```
-agent-boy2/
-├── server/               # Backend (Bun + WebSocket)
-│   ├── server.ts         # Main entry point (port 3001)
-│   ├── agents.ts         # Agent configuration
-│   ├── routes/           # API endpoints
-│   ├── commands/         # Slash commands per mode
-│   ├── modes/            # System prompts per mode
-│   ├── templates/        # CLAUDE.md templates per mode
-│   └── websocket/        # Real-time messaging
-├── client/               # Frontend (React 19 + TypeScript)
-│   ├── App.tsx           # Main React component
-│   ├── components/       # UI components
-│   │   ├── chat/         # Chat interface
-│   │   ├── message/      # Message rendering
-│   │   ├── sidebar/      # Navigation
-│   │   └── ui/           # Base components (Radix UI)
-│   ├── hooks/            # Custom React hooks
-│   └── utils/            # Client utilities
-├── data/                 # SQLite session database
-└── dist/                 # Build output
+agent-girl-custom/
+├── server/                   # Backend (Bun + WebSocket, port 3001)
+│   ├── server.ts             # Main entry point
+│   ├── agents.ts             # Agent configuration
+│   ├── systemPrompt.ts       # System prompts per mode
+│   ├── routes/               # REST API endpoints
+│   ├── websocket/            # Real-time messaging
+│   ├── commands/             # Slash commands by mode
+│   │   ├── copywriting/      # Copywriting mode commands
+│   │   ├── coder/            # Coder mode commands
+│   │   ├── general/          # General mode commands
+│   │   └── shared/           # Cross-mode commands
+│   ├── modes/                # System prompt templates (.txt)
+│   ├── templates/            # CLAUDE.md templates per mode
+│   ├── copywriting/          # Copywriting module & database
+│   │   ├── database.ts       # Brand/voice database
+│   │   └── strategies/       # Content-specific strategies
+│   ├── knowledge/            # Knowledge bases per mode
+│   ├── scraping/             # Web scraping infrastructure
+│   │   ├── deep-crawler.ts   # Deep crawl & link extraction
+│   │   └── content-analyzer.ts # Scraped content analysis
+│   └── utils/                # Server utilities
+├── client/                   # Frontend (React 19 + TypeScript)
+│   ├── App.tsx               # Root component
+│   ├── components/           # UI components
+│   │   ├── chat/             # Chat interface
+│   │   ├── copywriting/      # Brand management UI
+│   │   ├── message/          # Message rendering
+│   │   ├── sidebar/          # Navigation
+│   │   ├── header/           # Header components
+│   │   └── ui/               # Base components (Radix UI)
+│   ├── hooks/                # Custom React hooks
+│   │   ├── useSessionAPI.ts  # Session management
+│   │   ├── useWebSocket.ts   # Real-time connection
+│   │   ├── useBrandAPI.ts    # Brand API calls
+│   │   └── useCopywritingSession.ts
+│   └── utils/                # Client utilities
+├── data/                     # SQLite session database
+└── dist/                     # Build output
 ```
 
 ## Organization Rules

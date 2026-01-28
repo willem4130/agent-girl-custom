@@ -53,7 +53,7 @@ export function ChatContainer() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [_isLoadingSessions, setIsLoadingSessions] = useState(true);
-  const [currentSessionMode, setCurrentSessionMode] = useState<'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting'>('general');
+  const [currentSessionMode, setCurrentSessionMode] = useState<'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media'>('general');
 
   // Slash commands available for current session
   const [availableCommands, setAvailableCommands] = useState<SlashCommand[]>([]);
@@ -100,6 +100,13 @@ export function ChatContainer() {
   // Build wizard state
   const [isBuildWizardOpen, setIsBuildWizardOpen] = useState(false);
 
+  // Message queue for when agent is busy (enables continuous input)
+  const [pendingMessages, setPendingMessages] = useState<Array<{
+    text: string;
+    files?: import('../message/types').FileAttachment[];
+    mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media';
+  }>>([]);
+
   const sessionAPI = useSessionAPI();
 
   // Per-session loading state helpers
@@ -136,6 +143,17 @@ export function ChatContainer() {
   useEffect(() => {
     loadSessions();
   }, []);
+
+  // Process queued messages when agent finishes
+  useEffect(() => {
+    if (!isLoading && pendingMessages.length > 0) {
+      const nextMessage = pendingMessages[0];
+      // Remove from queue first to prevent re-processing
+      setPendingMessages(prev => prev.slice(1));
+      // Process the queued message (fromQueue=true to bypass queue check)
+      handleSubmit(nextMessage.files, nextMessage.mode, nextMessage.text, true);
+    }
+  }, [isLoading, pendingMessages.length]);
 
   const loadSessions = async () => {
     setIsLoadingSessions(true);
@@ -981,15 +999,21 @@ export function ChatContainer() {
     });
   };
 
-  const handleSubmit = async (files?: import('../message/types').FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting', messageOverride?: string) => {
+  const handleSubmit = async (files?: import('../message/types').FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media', messageOverride?: string, fromQueue = false) => {
     const messageText = messageOverride || inputValue;
     if (!messageText.trim()) return;
 
     if (!isConnected) return;
 
-    // Show toast if another chat is in progress
-    if (isLoading) {
-      toast.info('Another chat is in progress. Wait for it to complete first.');
+    // Queue message if agent is busy (unless this is being called from queue processing)
+    if (isLoading && !fromQueue) {
+      setPendingMessages(prev => [...prev, {
+        text: messageText,
+        files,
+        mode: mode || currentSessionMode,
+      }]);
+      setInputValue(''); // Clear input so user can continue typing
+      toast.info(`Message queued (${pendingMessages.length + 1} pending)`);
       return;
     }
 
@@ -1244,13 +1268,15 @@ export function ChatContainer() {
             onInputChange={setInputValue}
             onSubmit={handleSubmit}
             onStop={handleStop}
-            disabled={!isConnected || isLoading}
+            disabled={!isConnected}
             isGenerating={isLoading}
             isPlanMode={isPlanMode}
             onTogglePlanMode={handleTogglePlanMode}
             availableCommands={availableCommands}
             onOpenBuildWizard={handleOpenBuildWizard}
             mode={currentSessionMode}
+            sessionId={currentSessionId || undefined}
+            pendingMessagesCount={pendingMessages.length}
           />
         ) : (
           // Chat Interface
@@ -1270,7 +1296,7 @@ export function ChatContainer() {
               onChange={setInputValue}
               onSubmit={handleSubmit}
               onStop={handleStop}
-              disabled={!isConnected || isLoading}
+              disabled={!isConnected}
               isGenerating={isLoading}
               isPlanMode={isPlanMode}
               onTogglePlanMode={handleTogglePlanMode}
@@ -1280,6 +1306,7 @@ export function ChatContainer() {
               availableCommands={availableCommands}
               contextUsage={currentSessionId ? contextUsage.get(currentSessionId) : undefined}
               selectedModel={selectedModel}
+              pendingMessagesCount={pendingMessages.length}
             />
           </>
         )}

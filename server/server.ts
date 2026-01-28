@@ -52,6 +52,8 @@ import { handleDirectoryRoutes } from "./routes/directory";
 import { handleUserConfigRoutes } from "./routes/userConfig";
 import { handleCommandRoutes } from "./routes/commands";
 import { handleCopywritingRoutes } from "./routes/copywriting";
+import { handleMediaRoutes } from "./routes/media";
+import { handleContentHubRoutes } from "./routes/content-hub";
 import { handleWebSocketMessage } from "./websocket/messageHandlers";
 import type { ServerWebSocket, Server as ServerType } from "bun";
 
@@ -170,6 +172,18 @@ const server = Bun.serve({
     const copywritingResponse = await handleCopywritingRoutes(req, url);
     if (copywritingResponse) {
       return copywritingResponse;
+    }
+
+    // Try media routes
+    const mediaResponse = await handleMediaRoutes(req, url);
+    if (mediaResponse) {
+      return mediaResponse;
+    }
+
+    // Try content hub routes
+    const contentHubResponse = await handleContentHubRoutes(req, url);
+    if (contentHubResponse) {
+      return contentHubResponse;
     }
 
     // Try to handle as static file

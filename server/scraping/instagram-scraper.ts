@@ -62,11 +62,11 @@ async function _scrapeInstagramProfile(username: string): Promise<InstagramProfi
   }
 
   const response = await fetch(
-    `https://instagram-scraper-api2.p.rapidapi.com/v1/info?username_or_id=${encodeURIComponent(username)}`,
+    `https://instagram-scraper-stable-api.p.rapidapi.com/user_info.php?username=${encodeURIComponent(username)}`,
     {
       headers: {
         'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com',
+        'X-RapidAPI-Host': 'instagram-scraper-stable-api.p.rapidapi.com',
       },
     }
   );
@@ -106,11 +106,11 @@ async function _scrapeInstagramPosts(username: string, limit = 30): Promise<Inst
   }
 
   const response = await fetch(
-    `https://instagram-scraper-api2.p.rapidapi.com/v1.2/posts?username_or_id=${encodeURIComponent(username)}`,
+    `https://instagram-scraper-stable-api.p.rapidapi.com/user_posts.php?username=${encodeURIComponent(username)}&count=${limit}`,
     {
       headers: {
         'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com',
+        'X-RapidAPI-Host': 'instagram-scraper-stable-api.p.rapidapi.com',
       },
     }
   );
