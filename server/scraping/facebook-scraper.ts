@@ -136,12 +136,12 @@ async function _scrapeFacebookPosts(pageId: string, limit = 30): Promise<Faceboo
     id: post.id as string,
     message: post.message as string || '',
     createdTime: post.created_time as string,
-    reactions: (post.reactions as Record<string, unknown>)?.summary?.total_count || 0,
-    comments: (post.comments as Record<string, unknown>)?.summary?.total_count || 0,
+    reactions: ((post.reactions as Record<string, unknown>)?.summary as Record<string, unknown>)?.total_count as number || 0,
+    comments: ((post.comments as Record<string, unknown>)?.summary as Record<string, unknown>)?.total_count as number || 0,
     shares: (post.shares as Record<string, unknown>)?.count || 0,
     type: post.type as FacebookPost['type'] || 'status',
     url: post.permalink_url as string || `https://facebook.com/${post.id}`,
-    attachments: (post.attachments as Record<string, unknown>)?.data?.map((att: Record<string, unknown>) => ({
+    attachments: ((post.attachments as Record<string, unknown>)?.data as Record<string, unknown>[] | undefined)?.map((att: Record<string, unknown>) => ({
       type: att.type as string,
       url: att.url as string,
       title: att.title as string,
