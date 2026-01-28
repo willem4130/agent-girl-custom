@@ -19,10 +19,10 @@
  */
 
 import React, { useState } from 'react';
-import { MessageCircle, Code, Target, Zap, Hammer } from 'lucide-react';
+import { MessageCircle, Code, Target, Zap, Hammer, Pencil } from 'lucide-react';
 
 interface ModeOption {
-  id: 'general' | 'coder' | 'intense-research' | 'spark' | 'build';
+  id: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'build';
   name: string;
   description: string;
   icon: React.ReactNode;
@@ -60,6 +60,13 @@ const MODES: ModeOption[] = [
     gradient: 'linear-gradient(90deg, #FAE9A8 0%, #FFF4DA 25%, #ffffff 50%, #FFF4DA 75%, #FAE9A8 100%)',
   },
   {
+    id: 'copywriting',
+    name: 'Copywriting',
+    description: 'Brand-aligned social & newsletter copy',
+    icon: <Pencil className="size-4" />,
+    gradient: 'linear-gradient(90deg, #FF6B6B 0%, #FFE66D 25%, #ffffff 50%, #FFE66D 75%, #FF6B6B 100%)',
+  },
+  {
     id: 'build',
     name: 'Build',
     description: 'Create projects with guided setup',
@@ -70,8 +77,8 @@ const MODES: ModeOption[] = [
 ];
 
 interface ModeSelectorProps {
-  selectedMode: 'general' | 'coder' | 'intense-research' | 'spark';
-  onSelectMode: (mode: 'general' | 'coder' | 'intense-research' | 'spark') => void;
+  selectedMode: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting';
+  onSelectMode: (mode: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting') => void;
   onOpenBuildWizard?: () => void;
 }
 
@@ -92,7 +99,7 @@ export function ModeSelector({ selectedMode, onSelectMode, onOpenBuildWizard }: 
     if (mode.isBuildMode) {
       onOpenBuildWizard?.();
     } else {
-      onSelectMode(mode.id as 'general' | 'coder' | 'intense-research' | 'spark');
+      onSelectMode(mode.id as 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting');
     }
   };
 

@@ -19,10 +19,10 @@
  */
 
 import React, { useRef, useEffect } from 'react';
-import { MessageCircle, Code, Target, Zap } from 'lucide-react';
+import { MessageCircle, Code, Target, Zap, Pencil } from 'lucide-react';
 
 interface ModeIndicatorProps {
-  mode: 'general' | 'coder' | 'intense-research' | 'spark';
+  mode: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting';
   onWidthChange?: (width: number) => void;
 }
 
@@ -49,6 +49,12 @@ const MODE_CONFIGS = {
     name: 'Spark',
     icon: Zap,
     gradient: 'linear-gradient(90deg, #FAE9A8 0%, #FFF4DA 25%, #ffffff 50%, #FFF4DA 75%, #FAE9A8 100%)',
+    textColor: '#000000',
+  },
+  'copywriting': {
+    name: 'Copywriting',
+    icon: Pencil,
+    gradient: 'linear-gradient(90deg, #FF6B6B 0%, #FFE66D 25%, #ffffff 50%, #FFE66D 75%, #FF6B6B 100%)',
     textColor: '#000000',
   },
 };
