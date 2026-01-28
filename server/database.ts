@@ -49,6 +49,15 @@ export interface SessionMessage {
   timestamp: string;
 }
 
+export interface Workflow {
+  id: string;
+  name: string;
+  nodes: string; // JSON string of workflow nodes
+  edges: string; // JSON string of workflow edges
+  created_at: string;
+  updated_at: string;
+}
+
 class SessionDatabase {
   private db: Database;
 
@@ -149,6 +158,9 @@ class SessionDatabase {
 
     // Migration: Add context usage columns if they don't exist
     this.migrateContextUsage();
+
+    // Migration: Add workflows table if it doesn't exist
+    this.migrateWorkflows();
   }
 
   private migrateWorkingDirectory() {
@@ -714,6 +726,106 @@ class SessionDatabase {
     } catch (error) {
       console.error('❌ Failed to clear session messages:', error);
       return false;
+    }
+  }
+
+  // Workflow operations
+  createWorkflow(name: string, nodes: unknown[] = [], edges: unknown[] = []): Workflow {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    this.db.run(
+      "INSERT INTO workflows (id, name, nodes, edges, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      [id, name, JSON.stringify(nodes), JSON.stringify(edges), now, now]
+    );
+
+    return {
+      id,
+      name,
+      nodes: JSON.stringify(nodes),
+      edges: JSON.stringify(edges),
+      created_at: now,
+      updated_at: now,
+    };
+  }
+
+  getWorkflows(): Workflow[] {
+    return this.db
+      .query<Workflow, []>(
+        "SELECT id, name, nodes, edges, created_at, updated_at FROM workflows ORDER BY updated_at DESC"
+      )
+      .all();
+  }
+
+  getWorkflow(id: string): Workflow | null {
+    return this.db
+      .query<Workflow, [string]>(
+        "SELECT id, name, nodes, edges, created_at, updated_at FROM workflows WHERE id = ?"
+      )
+      .get(id) || null;
+  }
+
+  updateWorkflow(id: string, updates: { name?: string; nodes?: unknown[]; edges?: unknown[] }): boolean {
+    const now = new Date().toISOString();
+    const fields: string[] = ['updated_at = ?'];
+    const values: (string | null)[] = [now];
+
+    if (updates.name !== undefined) {
+      fields.push('name = ?');
+      values.push(updates.name);
+    }
+    if (updates.nodes !== undefined) {
+      fields.push('nodes = ?');
+      values.push(JSON.stringify(updates.nodes));
+    }
+    if (updates.edges !== undefined) {
+      fields.push('edges = ?');
+      values.push(JSON.stringify(updates.edges));
+    }
+
+    values.push(id);
+
+    const result = this.db.run(
+      `UPDATE workflows SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    return result.changes > 0;
+  }
+
+  deleteWorkflow(id: string): boolean {
+    const result = this.db.run("DELETE FROM workflows WHERE id = ?", [id]);
+    return result.changes > 0;
+  }
+
+  private migrateWorkflows() {
+    try {
+      // Check if workflows table exists
+      const tables = this.db.query<{ name: string }, []>(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='workflows'"
+      ).all();
+
+      if (tables.length === 0) {
+        console.log('📦 Migrating database: Creating workflows table');
+
+        this.db.run(`
+          CREATE TABLE workflows (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            nodes TEXT NOT NULL DEFAULT '[]',
+            edges TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        `);
+
+        console.log('✅ workflows table created successfully');
+      } else {
+        console.log('✅ workflows table already exists');
+      }
+    } catch (error) {
+      console.error('❌ Database migration failed:', error);
+      throw error;
     }
   }
 

@@ -25,7 +25,7 @@ import { ModeSelector } from './ModeSelector';
 import { ModeIndicator } from './ModeIndicator';
 import type { SlashCommand } from '../../hooks/useWebSocket';
 import { CommandTextRenderer } from '../message/CommandTextRenderer';
-import { BrandSelector, BrandFormModal, BrandVoicePanel, MediaGenerationPanel } from '../copywriting';
+import { BrandSelector, BrandFormModal, BrandVoicePanel, CopyLibraryPanel } from '../copywriting';
 import { ContentTypeQuickSelect, type ContentType } from '../copywriting/ContentTypeSelector';
 import {
   useBrandAPI,
@@ -40,7 +40,7 @@ import {
 interface NewChatWelcomeProps {
   inputValue: string;
   onInputChange: (value: string) => void;
-  onSubmit: (files?: FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media') => void;
+  onSubmit: (files?: FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media', messageOverride?: string, fromQueue?: boolean, copywritingContext?: { brandId?: string; contentTypes?: ContentType[] }) => void;
   onStop?: () => void;
   disabled?: boolean;
   isGenerating?: boolean;
@@ -49,6 +49,7 @@ interface NewChatWelcomeProps {
   availableCommands?: SlashCommand[];
   onOpenBuildWizard?: () => void;
   mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media';
+  onModeChange?: (mode: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media') => void;
   sessionId?: string;
   pendingMessagesCount?: number;
 }
@@ -61,19 +62,23 @@ const CAPABILITIES = [
   "I can analyze data and files"
 ];
 
-export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, disabled, isGenerating, isPlanMode, onTogglePlanMode, availableCommands = [], onOpenBuildWizard, mode, sessionId, pendingMessagesCount = 0 }: NewChatWelcomeProps) {
+export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, disabled, isGenerating, isPlanMode, onTogglePlanMode, availableCommands = [], onOpenBuildWizard, mode, onModeChange, sessionId, pendingMessagesCount = 0 }: NewChatWelcomeProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([]);
   const [_isDraggingOver, setIsDraggingOver] = useState(false);
 
   // Mode selection state (synchronized with parent via props)
-  const [selectedMode, setSelectedMode] = useState<'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media'>(mode || 'general');
+  const [selectedMode, setSelectedModeInternal] = useState<'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media'>(mode || 'general');
+  const setSelectedMode = (newMode: typeof selectedMode) => {
+    setSelectedModeInternal(newMode);
+    onModeChange?.(newMode);
+  };
 
   // Sync local mode state with prop when it changes
   useEffect(() => {
     if (mode) {
-      setSelectedMode(mode);
+      setSelectedModeInternal(mode);
     }
   }, [mode]);
   const [modeIndicatorWidth, setModeIndicatorWidth] = useState(80);
@@ -334,13 +339,19 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
     // Normal submit handling
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      onSubmit(attachedFiles.length > 0 ? attachedFiles : undefined, selectedMode);
+      const copywritingContext = (selectedMode === 'copywriting' || selectedMode === 'media') && (selectedBrandId || selectedContentTypes.length > 0)
+        ? { brandId: selectedBrandId || undefined, contentTypes: selectedContentTypes.length > 0 ? selectedContentTypes : undefined }
+        : undefined;
+      onSubmit(attachedFiles.length > 0 ? attachedFiles : undefined, selectedMode, undefined, false, copywritingContext);
       setAttachedFiles([]);
     }
   };
 
   const handleSubmit = () => {
-    onSubmit(attachedFiles.length > 0 ? attachedFiles : undefined, selectedMode);
+    const copywritingContext = (selectedMode === 'copywriting' || selectedMode === 'media') && (selectedBrandId || selectedContentTypes.length > 0)
+      ? { brandId: selectedBrandId || undefined, contentTypes: selectedContentTypes.length > 0 ? selectedContentTypes : undefined }
+      : undefined;
+    onSubmit(attachedFiles.length > 0 ? attachedFiles : undefined, selectedMode, undefined, false, copywritingContext);
     setAttachedFiles([]);
   };
 
@@ -469,6 +480,9 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
+
+  // Media mode is now handled by ChatContainer directly
+  // When user selects media mode here, submit triggers ChatContainer's currentSessionMode update
 
   return (
     <div
@@ -757,30 +771,17 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
                   onDeepAnalyze={handleDeepAnalyze}
                 />
               )}
-            </>
-          )}
 
-          {/* Brand Selector for Media Mode */}
-          {selectedMode === 'media' && (
-            <>
-              <BrandSelector
-                brands={brands}
-                selectedBrandId={selectedBrandId}
-                onSelectBrand={handleSelectBrand}
-                onCreateBrand={handleCreateBrand}
-                onEditBrand={handleEditBrand}
-                scrapedContent={scrapedContent}
-                isLoading={brandAPI.isLoading}
-              />
-
-              {/* Media Generation Panel when brand is selected */}
+              {/* Copy Library Panel when brand is selected */}
               {selectedBrandId && (
-                <div className="mt-4">
-                  <MediaGenerationPanel brandId={selectedBrandId} />
+                <div style={{ marginTop: '16px' }}>
+                  <CopyLibraryPanel brandId={selectedBrandId} />
                 </div>
               )}
             </>
           )}
+
+          {/* Media Mode now shows full canvas via early return above */}
         </div>
       </div>
 
@@ -798,6 +799,7 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
           }}
         />
       )}
+
     </div>
   );
 }

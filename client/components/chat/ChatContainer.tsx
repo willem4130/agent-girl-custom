@@ -33,7 +33,9 @@ import { BuildWizard } from '../build-wizard/BuildWizard';
 import { ScrollButton } from './ScrollButton';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSessionAPI, type Session } from '../../hooks/useSessionAPI';
-import { Menu, Edit3 } from 'lucide-react';
+import { Menu, Edit3, PanelRightOpen, PanelRightClose } from 'lucide-react';
+import { CopyLibraryPanel } from '../copywriting';
+import { useBrandAPI } from '../../hooks/useBrandAPI';
 import type { Message } from '../message/types';
 import { toast } from '../../utils/toast';
 import { showError } from '../../utils/errorMessages';
@@ -100,11 +102,18 @@ export function ChatContainer() {
   // Build wizard state
   const [isBuildWizardOpen, setIsBuildWizardOpen] = useState(false);
 
+  // Copy Library state (for copywriting mode)
+  const [isCopyPanelOpen, setIsCopyPanelOpen] = useState(true);
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  const [brandsList, setBrandsList] = useState<{ id: string; name: string }[]>([]);
+  const brandAPI = useBrandAPI();
+
   // Message queue for when agent is busy (enables continuous input)
   const [pendingMessages, setPendingMessages] = useState<Array<{
     text: string;
     files?: import('../message/types').FileAttachment[];
     mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media';
+    copywritingContext?: { brandId?: string; contentTypes?: string[] };
   }>>([]);
 
   const sessionAPI = useSessionAPI();
@@ -151,9 +160,23 @@ export function ChatContainer() {
       // Remove from queue first to prevent re-processing
       setPendingMessages(prev => prev.slice(1));
       // Process the queued message (fromQueue=true to bypass queue check)
-      handleSubmit(nextMessage.files, nextMessage.mode, nextMessage.text, true);
+      handleSubmit(nextMessage.files, nextMessage.mode, nextMessage.text, true, nextMessage.copywritingContext);
     }
   }, [isLoading, pendingMessages.length]);
+
+  // Load brands when entering copywriting mode
+  useEffect(() => {
+    if (currentSessionMode === 'copywriting' || currentSessionMode === 'media') {
+      brandAPI.fetchBrands().then(brands => {
+        setBrandsList(brands.map(b => ({ id: b.id, name: b.name })));
+        // Auto-select first brand if none selected
+        if (brands.length > 0 && !selectedBrandId) {
+          setSelectedBrandId(brands[0].id);
+        }
+      });
+    }
+  }, [currentSessionMode]);
+
 
   const loadSessions = async () => {
     setIsLoadingSessions(true);
@@ -999,7 +1022,7 @@ export function ChatContainer() {
     });
   };
 
-  const handleSubmit = async (files?: import('../message/types').FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media', messageOverride?: string, fromQueue = false) => {
+  const handleSubmit = async (files?: import('../message/types').FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media', messageOverride?: string, fromQueue = false, copywritingContext?: { brandId?: string; contentTypes?: string[] }) => {
     const messageText = messageOverride || inputValue;
     if (!messageText.trim()) return;
 
@@ -1011,6 +1034,7 @@ export function ChatContainer() {
         text: messageText,
         files,
         mode: mode || currentSessionMode,
+        copywritingContext,
       }]);
       setInputValue(''); // Clear input so user can continue typing
       toast.info(`Message queued (${pendingMessages.length + 1} pending)`);
@@ -1119,6 +1143,8 @@ export function ChatContainer() {
         sessionId: sessionId,
         model: selectedModel,
         timezone: userTimezone,
+        // Include copywriting context if provided (brand and content types)
+        ...(copywritingContext ? { copywritingContext } : {}),
       });
 
       setInputValue('');
@@ -1260,7 +1286,31 @@ export function ChatContainer() {
         </div>
       </nav>
 
-        {messages.length === 0 ? (
+        {currentSessionMode === 'media' ? (
+          // Media Mode - Copy Library with Image Generation
+          <div className="flex flex-1 flex-col overflow-hidden bg-[#0a0a0a]">
+            {/* Brand Selector Header */}
+            <div className="border-b border-white/10 bg-[rgb(30,32,34)] px-6 py-3">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-medium text-white/70">Brand:</span>
+                <select
+                  value={selectedBrandId || ''}
+                  onChange={(e) => setSelectedBrandId(e.target.value || null)}
+                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Select a brand...</option>
+                  {brandsList.map((brand) => (
+                    <option key={brand.id} value={brand.id}>{brand.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {/* Copy Library */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <CopyLibraryPanel brandId={selectedBrandId} />
+            </div>
+          </div>
+        ) : messages.length === 0 ? (
           // New Chat Welcome Screen
           <NewChatWelcome
             key={currentSessionId || 'welcome'}
@@ -1275,40 +1325,72 @@ export function ChatContainer() {
             availableCommands={availableCommands}
             onOpenBuildWizard={handleOpenBuildWizard}
             mode={currentSessionMode}
+            onModeChange={setCurrentSessionMode}
             sessionId={currentSessionId || undefined}
             pendingMessagesCount={pendingMessages.length}
           />
         ) : (
           // Chat Interface
-          <>
-            {/* Messages */}
-            <MessageList
-              messages={messages}
-              isLoading={isCurrentSessionLoading}
-              liveTokenCount={liveTokenCount}
-              scrollContainerRef={scrollContainerRef}
-            />
+          <div className="flex flex-1 overflow-hidden">
+            {/* Main Chat Area */}
+            <div className="flex flex-col flex-1 min-w-0">
+              {/* Messages */}
+              <MessageList
+                messages={messages}
+                isLoading={isCurrentSessionLoading}
+                liveTokenCount={liveTokenCount}
+                scrollContainerRef={scrollContainerRef}
+              />
 
-            {/* Input */}
-            <ChatInput
-              key={currentSessionId || 'new-chat'}
-              value={inputValue}
-              onChange={setInputValue}
-              onSubmit={handleSubmit}
-              onStop={handleStop}
-              disabled={!isConnected}
-              isGenerating={isLoading}
-              isPlanMode={isPlanMode}
-              onTogglePlanMode={handleTogglePlanMode}
-              backgroundProcesses={backgroundProcesses.get(currentSessionId || '') || []}
-              onKillProcess={handleKillProcess}
-              mode={currentSessionId ? currentSessionMode : undefined}
-              availableCommands={availableCommands}
-              contextUsage={currentSessionId ? contextUsage.get(currentSessionId) : undefined}
-              selectedModel={selectedModel}
-              pendingMessagesCount={pendingMessages.length}
-            />
-          </>
+              {/* Input */}
+              <ChatInput
+                key={currentSessionId || 'new-chat'}
+                value={inputValue}
+                onChange={setInputValue}
+                onSubmit={handleSubmit}
+                onStop={handleStop}
+                disabled={!isConnected}
+                isGenerating={isLoading}
+                isPlanMode={isPlanMode}
+                onTogglePlanMode={handleTogglePlanMode}
+                backgroundProcesses={backgroundProcesses.get(currentSessionId || '') || []}
+                onKillProcess={handleKillProcess}
+                mode={currentSessionId ? currentSessionMode : undefined}
+                availableCommands={availableCommands}
+                contextUsage={currentSessionId ? contextUsage.get(currentSessionId) : undefined}
+                selectedModel={selectedModel}
+                pendingMessagesCount={pendingMessages.length}
+              />
+            </div>
+
+            {/* Copy Library Panel - Right sidebar for copywriting mode */}
+            {currentSessionMode === 'copywriting' && (
+              <div
+                className="flex flex-col border-l border-white/10 bg-[rgb(30,32,34)] transition-all duration-200"
+                style={{ width: isCopyPanelOpen ? '380px' : '48px' }}
+              >
+                {/* Panel Toggle */}
+                <button
+                  onClick={() => setIsCopyPanelOpen(!isCopyPanelOpen)}
+                  className="flex items-center justify-center p-3 border-b border-white/10 hover:bg-white/5 transition-colors"
+                  title={isCopyPanelOpen ? 'Collapse panel' : 'Expand Copy Library'}
+                >
+                  {isCopyPanelOpen ? (
+                    <PanelRightClose size={18} className="text-white/60" />
+                  ) : (
+                    <PanelRightOpen size={18} className="text-white/60" />
+                  )}
+                </button>
+
+                {/* Panel Content */}
+                {isCopyPanelOpen && (
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <CopyLibraryPanel brandId={selectedBrandId} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

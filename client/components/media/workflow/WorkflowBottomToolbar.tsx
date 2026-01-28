@@ -1,8 +1,16 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useReactFlow, useViewport, Position } from "@xyflow/react";
-import Dagre from "@dagrejs/dagre";
 import { apiFetch } from "@/lib/csrf";
+
+// Lazy-load dagre to avoid CommonJS dynamic require issues in browser
+let DagreModule: typeof import("@dagrejs/dagre") | null = null;
+const loadDagre = async () => {
+  if (!DagreModule) {
+    DagreModule = await import("@dagrejs/dagre");
+  }
+  return DagreModule;
+};
 import { useWorkflowContext } from "./WorkflowContext";
 import type { NodeType } from "./types";
 
@@ -446,11 +454,20 @@ export default function WorkflowBottomToolbar({
   );
 
   // Auto-layout nodes using dagre for proper graph layout
-  const cleanLayout = useCallback(() => {
+  const cleanLayout = useCallback(async () => {
     const nodes = getNodes();
     const edges = getEdges();
 
     if (nodes.length === 0) return;
+
+    // Lazy-load dagre
+    let Dagre;
+    try {
+      Dagre = await loadDagre();
+    } catch (error) {
+      console.error("Failed to load dagre for auto-layout:", error);
+      return;
+    }
 
     // Layout constants
     const NODE_WIDTH = 280;

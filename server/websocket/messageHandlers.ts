@@ -84,7 +84,7 @@ async function handleChatMessage(
   data: Record<string, unknown>,
   activeQueries: Map<string, unknown>
 ): Promise<void> {
-  const { content, sessionId, model, timezone } = data;
+  const { content, sessionId, model, timezone, copywritingContext } = data;
 
   if (!content || !sessionId) {
     ws.send(JSON.stringify({ type: 'error', error: 'Missing content or sessionId' }));
@@ -292,7 +292,15 @@ async function handleChatMessage(
 
     // Build query options with provider-specific system prompt (including agent list)
     // Add working directory context to system prompt AND all agent prompts
-    const baseSystemPrompt = getSystemPrompt(providerType, AGENT_REGISTRY, userConfig, timezone as string | undefined, session.mode);
+    // Pass copywriting context (brand/content types) for copywriting/media modes
+    const baseSystemPrompt = getSystemPrompt(
+      providerType,
+      AGENT_REGISTRY,
+      userConfig,
+      timezone as string | undefined,
+      session.mode,
+      copywritingContext as { brandId?: string; contentTypes?: Array<{ id: string; label: string; icon?: string }> } | undefined
+    );
     const systemPromptWithContext = `${baseSystemPrompt}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

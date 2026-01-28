@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { Plus, Edit3, Globe, Instagram, Facebook, Linkedin } from 'lucide-react';
+import { Plus, Edit3, Globe, Instagram, Facebook, Linkedin, Sparkles } from 'lucide-react';
 import type { Brand, ScrapedContent } from '../../hooks/useBrandAPI';
 
 interface BrandSelectorProps {
@@ -176,20 +176,42 @@ export function BrandSelector({
                 <Edit3 style={{ width: 14, height: 14 }} />
               </button>
 
-              {/* Brand name */}
+              {/* Brand name with AI analysis indicator */}
               <div
                 style={{
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  color: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
                   marginBottom: '12px',
                   paddingRight: '24px',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
                 }}
               >
-                {brand.name}
+                <span
+                  style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: 'white',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {brand.name}
+                </span>
+                {brand.has_voice_analysis && (
+                  <span
+                    title={`AI analyzed${brand.analysis_confidence ? ` (${Math.round(brand.analysis_confidence * 100)}% confidence)` : ''}`}
+                    style={{ display: 'flex', flexShrink: 0 }}
+                  >
+                    <Sparkles
+                      style={{
+                        width: 12,
+                        height: 12,
+                        color: '#FFE66D',
+                      }}
+                    />
+                  </span>
+                )}
               </div>
 
               {/* Platform icons */}

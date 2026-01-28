@@ -502,7 +502,7 @@ export function BrandVoicePanel({
               </div>
 
               {/* Winning Patterns */}
-              {hasProfile && voiceProfile.winning_hooks && voiceProfile.winning_hooks.length > 0 && (
+              {hasProfile && voiceProfile.winning_hooks && Array.isArray(voiceProfile.winning_hooks) && voiceProfile.winning_hooks.length > 0 && (
                 <div style={{ marginBottom: '16px' }}>
                   <div
                     style={{
@@ -537,7 +537,7 @@ export function BrandVoicePanel({
               )}
 
               {/* Top Frameworks */}
-              {hasProfile && voiceProfile.top_frameworks && voiceProfile.top_frameworks.length > 0 && (
+              {hasProfile && voiceProfile.top_frameworks && Array.isArray(voiceProfile.top_frameworks) && voiceProfile.top_frameworks.length > 0 && (
                 <div style={{ marginBottom: '16px' }}>
                   <div
                     style={{

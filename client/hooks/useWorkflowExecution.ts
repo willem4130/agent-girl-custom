@@ -433,7 +433,7 @@ export function useWorkflowExecution() {
       };
 
       try {
-        const response = await apiFetch("/api/generate-image", {
+        const response = await apiFetch("/api/media/images/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -461,7 +461,7 @@ export function useWorkflowExecution() {
         // Save the generated image to the database so it appears in assets
         if (generatedImageUrl) {
           try {
-            await apiFetch("/api/images", {
+            await apiFetch("/api/media/images", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -548,7 +548,7 @@ export function useWorkflowExecution() {
       };
 
       try {
-        const response = await apiFetch("/api/generate-image", {
+        const response = await apiFetch("/api/media/images/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -576,7 +576,7 @@ export function useWorkflowExecution() {
         // Save the generated image to the database so it appears in assets
         if (generatedImageUrl) {
           try {
-            await apiFetch("/api/images", {
+            await apiFetch("/api/media/images", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -650,7 +650,7 @@ export function useWorkflowExecution() {
       };
 
       try {
-        const response = await apiFetch("/api/generate-video", {
+        const response = await apiFetch("/api/media/videos/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -768,7 +768,7 @@ export function useWorkflowExecution() {
       };
 
       try {
-        const response = await apiFetch("/api/generate-video", {
+        const response = await apiFetch("/api/media/videos/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -848,7 +848,7 @@ export function useWorkflowExecution() {
       };
 
       try {
-        const response = await apiFetch("/api/generate-video", {
+        const response = await apiFetch("/api/media/videos/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -1005,7 +1005,7 @@ export function useWorkflowExecution() {
       }
 
       try {
-        const response = await apiFetch("/api/generate-video", {
+        const response = await apiFetch("/api/media/videos/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -1115,7 +1115,7 @@ export function useWorkflowExecution() {
             : [];
 
         // Call the video editing API
-        const response = await apiFetch("/api/video-edit", {
+        const response = await apiFetch("/api/media/videos/edit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1273,7 +1273,7 @@ export function useWorkflowExecution() {
 
       try {
         // Call the video editing API
-        const response = await apiFetch("/api/video-edit", {
+        const response = await apiFetch("/api/media/videos/edit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1380,7 +1380,7 @@ export function useWorkflowExecution() {
 
       try {
         // Call the video editing API
-        const response = await apiFetch("/api/video-edit", {
+        const response = await apiFetch("/api/media/videos/edit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

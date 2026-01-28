@@ -161,6 +161,26 @@ export type StylePreset =
   | 'cinematic'
   | 'documentary';
 
+// Advanced style presets (from style-templates.ts)
+export type AdvancedStylePreset =
+  | 'photoshoot-professional'
+  | 'anime-modern'
+  | 'anime-ghibli'
+  | 'cartoon-pixar'
+  | 'cartoon-disney'
+  | '3d-octane'
+  | '3d-unreal'
+  | 'illustration-editorial'
+  | 'illustration-concept'
+  | 'cyberpunk-neon'
+  | 'cyberpunk-gritty'
+  | 'pixel-art-retro'
+  | 'pixel-art-modern'
+  | 'cinematic-film'
+  | 'cinematic-noir'
+  | 'watercolor-loose'
+  | 'watercolor-detailed';
+
 export interface StylePresetConfig {
   name: StylePreset;
   displayName: string;

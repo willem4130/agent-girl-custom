@@ -317,6 +317,23 @@ export interface EditedVideo {
 export type ContentHubItemType = 'copy' | 'image' | 'video';
 export type ContentLinkType = 'generated_from' | 'inspired_by' | 'related';
 
+// ============================================================================
+// COPY SECTIONS INTERFACES (for copy-centric image generation)
+// ============================================================================
+
+export type SectionType = 'headline' | 'intro' | 'body-section' | 'conclusion' | 'cta' | 'quote' | 'list-item';
+
+export interface CopySection {
+  id: string;
+  copy_id: string;
+  section_type: SectionType;
+  section_index: number;
+  content: string;
+  suggested_visual_concept: string | null;
+  image_id: string | null;
+  created_at: string;
+}
+
 export interface ContentLink {
   id: string;
   source_type: ContentHubItemType;
@@ -801,6 +818,30 @@ class CopywritingDatabase {
       ON content_links(target_type, target_id)
     `);
 
+    // ========================================================================
+    // COPY SECTIONS TABLE (for copy-centric image generation)
+    // ========================================================================
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS copy_sections (
+        id TEXT PRIMARY KEY,
+        copy_id TEXT NOT NULL,
+        section_type TEXT NOT NULL,
+        section_index INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        suggested_visual_concept TEXT,
+        image_id TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (copy_id) REFERENCES generated_copy(id) ON DELETE CASCADE,
+        FOREIGN KEY (image_id) REFERENCES generated_images(id) ON DELETE SET NULL
+      )
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_sections_copy
+      ON copy_sections(copy_id)
+    `);
+
     console.log('✅ Copywriting database initialized');
   }
 
@@ -875,6 +916,28 @@ class CopywritingDatabase {
     return this.db
       .query<BrandConfig, []>('SELECT * FROM brand_configs ORDER BY updated_at DESC')
       .all();
+  }
+
+  /**
+   * List brands with analysis status (indicates if deep voice analysis exists)
+   */
+  listBrandConfigsWithStatus(): (BrandConfig & { has_voice_analysis: boolean; analysis_confidence?: number })[] {
+    return this.db
+      .query<BrandConfig & { has_voice_analysis: number; analysis_confidence: number | null }, []>(`
+        SELECT
+          bc.*,
+          CASE WHEN bva.id IS NOT NULL THEN 1 ELSE 0 END as has_voice_analysis,
+          bva.confidence_score as analysis_confidence
+        FROM brand_configs bc
+        LEFT JOIN brand_voice_analysis bva ON bc.id = bva.brand_id
+        ORDER BY bc.updated_at DESC
+      `)
+      .all()
+      .map(row => ({
+        ...row,
+        has_voice_analysis: row.has_voice_analysis === 1,
+        analysis_confidence: row.analysis_confidence ?? undefined,
+      }));
   }
 
   updateBrandConfig(
@@ -2480,6 +2543,121 @@ class CopywritingDatabase {
   deleteContentLink(linkId: string): boolean {
     const result = this.db.run('DELETE FROM content_links WHERE id = ?', [linkId]);
     return result.changes > 0;
+  }
+
+  // ============================================================================
+  // COPY SECTIONS OPERATIONS (for copy-centric image generation)
+  // ============================================================================
+
+  createCopySection(
+    section: Omit<CopySection, 'id' | 'created_at'>
+  ): CopySection {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    this.db.run(
+      `INSERT INTO copy_sections
+        (id, copy_id, section_type, section_index, content, suggested_visual_concept, image_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        section.copy_id,
+        section.section_type,
+        section.section_index,
+        section.content,
+        section.suggested_visual_concept || null,
+        section.image_id || null,
+        now,
+      ]
+    );
+
+    return {
+      id,
+      copy_id: section.copy_id,
+      section_type: section.section_type,
+      section_index: section.section_index,
+      content: section.content,
+      suggested_visual_concept: section.suggested_visual_concept || null,
+      image_id: section.image_id || null,
+      created_at: now,
+    };
+  }
+
+  getCopySections(copyId: string): CopySection[] {
+    return this.db
+      .query<CopySection, [string]>(
+        'SELECT * FROM copy_sections WHERE copy_id = ? ORDER BY section_index ASC'
+      )
+      .all(copyId);
+  }
+
+  getCopySection(sectionId: string): CopySection | null {
+    return this.db
+      .query<CopySection, [string]>(
+        'SELECT * FROM copy_sections WHERE id = ?'
+      )
+      .get(sectionId) || null;
+  }
+
+  updateCopySectionImage(sectionId: string, imageId: string | null): boolean {
+    const result = this.db.run(
+      'UPDATE copy_sections SET image_id = ? WHERE id = ?',
+      [imageId, sectionId]
+    );
+    return result.changes > 0;
+  }
+
+  updateCopySectionVisualConcept(sectionId: string, concept: string): boolean {
+    const result = this.db.run(
+      'UPDATE copy_sections SET suggested_visual_concept = ? WHERE id = ?',
+      [concept, sectionId]
+    );
+    return result.changes > 0;
+  }
+
+  deleteCopySections(copyId: string): boolean {
+    const result = this.db.run('DELETE FROM copy_sections WHERE copy_id = ?', [copyId]);
+    return result.changes > 0;
+  }
+
+  deleteCopySection(sectionId: string): boolean {
+    const result = this.db.run('DELETE FROM copy_sections WHERE id = ?', [sectionId]);
+    return result.changes > 0;
+  }
+
+  /**
+   * Get copies with their sections and linked images for a brand
+   */
+  getCopiesWithMedia(brandId: string): Array<GeneratedCopy & { sections: CopySection[]; images: GeneratedImage[] }> {
+    const copies = this.listGeneratedCopy(brandId);
+
+    return copies.map(copy => {
+      const sections = this.getCopySections(copy.id);
+      const images = this.getImagesByCopy(copy.id);
+
+      // Also get images linked through sections
+      const sectionImageIds = sections
+        .filter(s => s.image_id)
+        .map(s => s.image_id as string);
+
+      const sectionImages = sectionImageIds
+        .map(id => this.getGeneratedImage(id))
+        .filter((img): img is GeneratedImage => img !== null);
+
+      // Merge and deduplicate images
+      const allImages = [...images];
+      for (const img of sectionImages) {
+        if (!allImages.find(i => i.id === img.id)) {
+          allImages.push(img);
+        }
+      }
+
+      return {
+        ...copy,
+        sections,
+        images: allImages,
+      };
+    });
   }
 
   /**

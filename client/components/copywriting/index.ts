@@ -15,3 +15,5 @@ export type { ReferenceMaterial, MaterialType } from './ReferenceMaterialsPanel'
 export { CopywritingWizard } from './CopywritingWizard';
 export type { BriefingData, WizardResult } from './CopywritingWizard';
 export { MediaGenerationPanel } from './media/MediaGenerationPanel';
+export { CopyLibraryPanel } from './CopyLibraryPanel';
+export { ImageGenerationSlideOver } from './ImageGenerationSlideOver';

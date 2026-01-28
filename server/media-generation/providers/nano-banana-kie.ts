@@ -8,29 +8,28 @@
 import { BaseImageProvider } from './base-provider';
 import type { ImageGenerationRequest, ImageGenerationResult } from '../types';
 
-const KIE_API_BASE = 'https://kieai.erweima.ai/api/v1';
+const KIE_API_BASE = 'https://api.kie.ai/api/v1';
 
 interface KieGenerationResponse {
   code: number;
+  msg?: string;
+  message?: string;
   data?: {
     taskId: string;
-    status: string;
-  };
-  message?: string;
+    status?: string;
+  } | null;
 }
 
 interface KieStatusResponse {
   code: number;
+  msg?: string;
   data?: {
-    status: 'pending' | 'processing' | 'completed' | 'failed';
-    progress?: number;
-    output?: {
-      imageUrl?: string;
-      seed?: number;
-    };
-    error?: string;
-  };
-  message?: string;
+    taskId: string;
+    state: 'pending' | 'processing' | 'success' | 'failed';
+    resultJson?: string; // JSON string containing {"resultUrls": ["url1", "url2"]}
+    failMsg?: string | null;
+    costTime?: number;
+  } | null;
 }
 
 export class NanoBananaKieProvider extends BaseImageProvider {
@@ -63,18 +62,17 @@ export class NanoBananaKieProvider extends BaseImageProvider {
     try {
       const dimensions = this.getAspectRatioDimensions(request.aspectRatio || '1:1', 1024);
 
-      const generateResponse = await fetch(`${KIE_API_BASE}/nano-banana/generate`, {
+      const generateResponse = await fetch(`${KIE_API_BASE}/playground/createTask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({
-          prompt: this.preparePrompt(request.prompt),
-          negative_prompt: request.negativePrompt || 'blurry, low quality, distorted, watermark',
-          width: request.width || dimensions.width,
-          height: request.height || dimensions.height,
-          seed: request.seed,
+          model: 'google/nano-banana',
+          input: {
+            prompt: this.preparePrompt(request.prompt),
+          },
         }),
       });
 
@@ -85,8 +83,8 @@ export class NanoBananaKieProvider extends BaseImageProvider {
 
       const generateData = await generateResponse.json() as KieGenerationResponse;
 
-      if (generateData.code !== 0 || !generateData.data?.taskId) {
-        return { success: false, error: generateData.message || 'Failed to start generation' };
+      if ((generateData.code !== 0 && generateData.code !== 200) || !generateData.data?.taskId) {
+        return { success: false, error: generateData.msg || generateData.message || 'Failed to start generation' };
       }
 
       const taskId = generateData.data.taskId;
@@ -122,7 +120,7 @@ export class NanoBananaKieProvider extends BaseImageProvider {
       await new Promise(resolve => setTimeout(resolve, intervalMs));
 
       try {
-        const statusResponse = await fetch(`${KIE_API_BASE}/task/${taskId}`, {
+        const statusResponse = await fetch(`${KIE_API_BASE}/playground/recordInfo?taskId=${taskId}`, {
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
           },
@@ -133,19 +131,29 @@ export class NanoBananaKieProvider extends BaseImageProvider {
         }
 
         const statusData = await statusResponse.json() as KieStatusResponse;
+        const state = statusData.data?.state?.toLowerCase();
 
-        if (statusData.data?.status === 'completed' && statusData.data.output?.imageUrl) {
-          return {
-            success: true,
-            imageUrl: statusData.data.output.imageUrl,
-            seed: statusData.data.output.seed,
-          };
+        // Check for completion
+        if (state === 'success' && statusData.data?.resultJson) {
+          try {
+            const result = JSON.parse(statusData.data.resultJson) as { resultUrls?: string[] };
+            const imageUrl = result.resultUrls?.[0];
+
+            if (imageUrl) {
+              return {
+                success: true,
+                imageUrl,
+              };
+            }
+          } catch {
+            // Failed to parse resultJson
+          }
         }
 
-        if (statusData.data?.status === 'failed') {
+        if (state === 'failed') {
           return {
             success: false,
-            error: statusData.data.error || 'Generation failed',
+            error: statusData.data?.failMsg || 'Generation failed',
           };
         }
       } catch {
@@ -159,6 +167,7 @@ export class NanoBananaKieProvider extends BaseImageProvider {
 
 /**
  * Nano Banana Pro - Higher quality, higher resolution
+ * Note: Uses same Kie.ai model as standard Nano Banana
  */
 export class NanoBananaProProvider extends BaseImageProvider {
   readonly name = 'nano-banana-pro';
@@ -190,19 +199,17 @@ export class NanoBananaProProvider extends BaseImageProvider {
     try {
       const dimensions = this.getAspectRatioDimensions(request.aspectRatio || '1:1', 2048);
 
-      const generateResponse = await fetch(`${KIE_API_BASE}/nano-banana-pro/generate`, {
+      const generateResponse = await fetch(`${KIE_API_BASE}/playground/createTask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({
-          prompt: this.preparePrompt(request.prompt),
-          negative_prompt: request.negativePrompt || 'blurry, low quality, distorted, watermark, artifacts',
-          width: request.width || dimensions.width,
-          height: request.height || dimensions.height,
-          seed: request.seed,
-          enhance: true, // Pro feature
+          model: 'google/nano-banana',
+          input: {
+            prompt: this.preparePrompt(request.prompt),
+          },
         }),
       });
 
@@ -213,8 +220,8 @@ export class NanoBananaProProvider extends BaseImageProvider {
 
       const generateData = await generateResponse.json() as KieGenerationResponse;
 
-      if (generateData.code !== 0 || !generateData.data?.taskId) {
-        return { success: false, error: generateData.message || 'Failed to start generation' };
+      if ((generateData.code !== 0 && generateData.code !== 200) || !generateData.data?.taskId) {
+        return { success: false, error: generateData.msg || generateData.message || 'Failed to start generation' };
       }
 
       const taskId = generateData.data.taskId;
@@ -248,7 +255,7 @@ export class NanoBananaProProvider extends BaseImageProvider {
       await new Promise(resolve => setTimeout(resolve, intervalMs));
 
       try {
-        const statusResponse = await fetch(`${KIE_API_BASE}/task/${taskId}`, {
+        const statusResponse = await fetch(`${KIE_API_BASE}/playground/recordInfo?taskId=${taskId}`, {
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
           },
@@ -259,19 +266,29 @@ export class NanoBananaProProvider extends BaseImageProvider {
         }
 
         const statusData = await statusResponse.json() as KieStatusResponse;
+        const state = statusData.data?.state?.toLowerCase();
 
-        if (statusData.data?.status === 'completed' && statusData.data.output?.imageUrl) {
-          return {
-            success: true,
-            imageUrl: statusData.data.output.imageUrl,
-            seed: statusData.data.output.seed,
-          };
+        // Check for completion
+        if (state === 'success' && statusData.data?.resultJson) {
+          try {
+            const result = JSON.parse(statusData.data.resultJson) as { resultUrls?: string[] };
+            const imageUrl = result.resultUrls?.[0];
+
+            if (imageUrl) {
+              return {
+                success: true,
+                imageUrl,
+              };
+            }
+          } catch {
+            // Failed to parse resultJson
+          }
         }
 
-        if (statusData.data?.status === 'failed') {
+        if (state === 'failed') {
           return {
             success: false,
-            error: statusData.data.error || 'Generation failed',
+            error: statusData.data?.failMsg || 'Generation failed',
           };
         }
       } catch {

@@ -37,6 +37,7 @@ import {
   generateConciseInstructions,
   type VoiceAnalysisResult,
 } from '../scraping/content-analyzer';
+import { analyzeCopySections } from '../copywriting/section-analyzer';
 
 /**
  * Handle copywriting-related API routes
@@ -85,10 +86,10 @@ export async function handleCopywritingRoutes(
     }
   }
 
-  // GET /api/copywriting/brands - List all brands
+  // GET /api/copywriting/brands - List all brands (includes analysis status)
   if (pathname === '/api/copywriting/brands' && req.method === 'GET') {
     try {
-      const brands = copywritingDb.listBrandConfigs();
+      const brands = copywritingDb.listBrandConfigsWithStatus();
       return jsonResponse({ brands });
     } catch (error) {
       return jsonResponse({ error: getErrorMessage(error) }, 500);
@@ -495,7 +496,17 @@ export async function handleCopywritingRoutes(
       if (!profile) {
         return jsonResponse({ error: 'Voice profile not found' }, 404);
       }
-      return jsonResponse(profile);
+
+      // Parse JSON fields before returning
+      const response = {
+        ...profile,
+        top_frameworks: profile.top_frameworks ? JSON.parse(profile.top_frameworks) : [],
+        top_triggers: profile.top_triggers ? JSON.parse(profile.top_triggers) : [],
+        winning_hooks: profile.winning_hooks ? JSON.parse(profile.winning_hooks) : [],
+        avoid_patterns: profile.avoid_patterns ? JSON.parse(profile.avoid_patterns) : [],
+      };
+
+      return jsonResponse(response);
     } catch (error) {
       return jsonResponse({ error: getErrorMessage(error) }, 500);
     }
@@ -721,6 +732,168 @@ export async function handleCopywritingRoutes(
 
       const copy = copywritingDb.getGeneratedCopy(copyPublishMatch[1]);
       return jsonResponse(copy);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // ============================================================================
+  // COPY SECTIONS ENDPOINTS (for copy-centric image generation)
+  // ============================================================================
+
+  // POST /api/copywriting/copy/:copyId/analyze-sections - Analyze copy and create sections
+  const analyzeSectionsMatch = pathname.match(
+    /^\/api\/copywriting\/copy\/([^/]+)\/analyze-sections$/
+  );
+  if (analyzeSectionsMatch && req.method === 'POST') {
+    try {
+      const copyId = analyzeSectionsMatch[1];
+      const copy = copywritingDb.getGeneratedCopy(copyId);
+
+      if (!copy) {
+        return jsonResponse({ error: 'Copy not found' }, 404);
+      }
+
+      // Delete existing sections before re-analyzing
+      copywritingDb.deleteCopySections(copyId);
+
+      // Analyze sections using LLM
+      const analysisResult = await analyzeCopySections(
+        copy.copy_text,
+        copy.content_type
+      );
+
+      // Store sections in database
+      const storedSections = analysisResult.sections.map((section, index) => {
+        return copywritingDb.createCopySection({
+          copy_id: copyId,
+          section_type: section.section_type,
+          section_index: index,
+          content: section.content,
+          suggested_visual_concept: section.suggested_visual_concept,
+          image_id: null,
+        });
+      });
+
+      return jsonResponse({
+        copyId,
+        sections: storedSections,
+        totalSections: storedSections.length,
+        contentType: analysisResult.contentType,
+      });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/copy/:copyId/sections - Get sections for a copy
+  const getSectionsMatch = pathname.match(
+    /^\/api\/copywriting\/copy\/([^/]+)\/sections$/
+  );
+  if (getSectionsMatch && req.method === 'GET') {
+    try {
+      const copyId = getSectionsMatch[1];
+
+      // Verify copy exists
+      const copy = copywritingDb.getGeneratedCopy(copyId);
+      if (!copy) {
+        return jsonResponse({ error: 'Copy not found' }, 404);
+      }
+
+      const sections = copywritingDb.getCopySections(copyId);
+
+      return jsonResponse({
+        copyId,
+        sections,
+        totalSections: sections.length,
+      });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // PUT /api/copywriting/sections/:sectionId/image - Link image to section
+  const sectionImageMatch = pathname.match(
+    /^\/api\/copywriting\/sections\/([^/]+)\/image$/
+  );
+  if (sectionImageMatch && req.method === 'PUT') {
+    try {
+      const body = (await req.json()) as { imageId: string | null };
+      const sectionId = sectionImageMatch[1];
+
+      const success = copywritingDb.updateCopySectionImage(sectionId, body.imageId);
+
+      if (!success) {
+        return jsonResponse({ error: 'Section not found' }, 404);
+      }
+
+      const section = copywritingDb.getCopySection(sectionId);
+      return jsonResponse(section);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // PUT /api/copywriting/sections/:sectionId/visual-concept - Update visual concept
+  const sectionConceptMatch = pathname.match(
+    /^\/api\/copywriting\/sections\/([^/]+)\/visual-concept$/
+  );
+  if (sectionConceptMatch && req.method === 'PUT') {
+    try {
+      const body = (await req.json()) as { concept: string };
+      const sectionId = sectionConceptMatch[1];
+
+      if (!body.concept) {
+        return jsonResponse({ error: 'concept is required' }, 400);
+      }
+
+      const success = copywritingDb.updateCopySectionVisualConcept(sectionId, body.concept);
+
+      if (!success) {
+        return jsonResponse({ error: 'Section not found' }, 404);
+      }
+
+      const section = copywritingDb.getCopySection(sectionId);
+      return jsonResponse(section);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/brands/:brandId/copies-with-media - Get copies with sections and images
+  const copiesWithMediaMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/copies-with-media$/
+  );
+  if (copiesWithMediaMatch && req.method === 'GET') {
+    try {
+      const brandId = copiesWithMediaMatch[1];
+
+      // Verify brand exists
+      const brand = copywritingDb.getBrandConfig(brandId);
+      if (!brand) {
+        return jsonResponse({ error: 'Brand not found' }, 404);
+      }
+
+      const copiesWithMedia = copywritingDb.getCopiesWithMedia(brandId);
+
+      return jsonResponse({
+        brandId,
+        copies: copiesWithMedia,
+        totalCopies: copiesWithMedia.length,
+      });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // DELETE /api/copywriting/sections/:sectionId - Delete a section
+  const deleteSectionMatch = pathname.match(
+    /^\/api\/copywriting\/sections\/([^/]+)$/
+  );
+  if (deleteSectionMatch && req.method === 'DELETE') {
+    try {
+      const success = copywritingDb.deleteCopySection(deleteSectionMatch[1]);
+      return jsonResponse({ success });
     } catch (error) {
       return jsonResponse({ error: getErrorMessage(error) }, 500);
     }

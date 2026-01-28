@@ -22,7 +22,8 @@ import { buildImagePrompt } from '../media-generation/prompt-engine/content-to-p
 import { applyStylePreset, getRecommendedStyles } from '../media-generation/prompt-engine/style-presets';
 import { applyAntiAiTechniques } from '../media-generation/prompt-engine/anti-ai-techniques';
 import { saveMediaFile, getMediaStoragePath, getStorageStats } from '../media-generation/utils/storage';
-import { ASPECT_RATIOS, STYLE_PRESETS, type StylePreset } from '../media-generation/types';
+import { ASPECT_RATIOS, STYLE_PRESETS, type StylePreset, type AdvancedStylePreset } from '../media-generation/types';
+import { applyAdvancedStyle, getAdvancedStylePresets } from '../media-generation/prompt-engine/style-templates';
 
 /**
  * Handle media-related API routes
@@ -412,6 +413,78 @@ export async function handleMediaRoutes(
   }
 
   // ============================================================================
+  // VIDEO EDITING ENDPOINTS
+  // ============================================================================
+
+  // POST /api/media/videos/edit - Edit video (concat, trim, transition)
+  if (pathname === '/api/media/videos/edit' && req.method === 'POST') {
+    try {
+      const body = (await req.json()) as {
+        operation: 'concat' | 'trim' | 'transition';
+        videoUrls?: string[];
+        videoUrl?: string;
+        startTime?: number;
+        endTime?: number;
+        transitionType?: string;
+        transitionDuration?: number;
+        transitions?: Array<{ type: string; duration: number }>;
+        aspectRatio?: string;
+      };
+
+      if (!body.operation) {
+        return jsonResponse({ error: 'operation is required' }, 400);
+      }
+
+      // TODO: Implement actual video editing with FFmpeg
+      // For now, return a placeholder response
+      // The actual implementation would use the video-editor module
+
+      switch (body.operation) {
+        case 'concat': {
+          if (!body.videoUrls || body.videoUrls.length === 0) {
+            return jsonResponse({ error: 'videoUrls array is required for concat operation' }, 400);
+          }
+          // Return first video as placeholder (actual impl would concatenate)
+          return jsonResponse({
+            success: true,
+            videoUrl: body.videoUrls[0],
+            message: 'Video concat placeholder - FFmpeg integration pending',
+          });
+        }
+
+        case 'trim': {
+          if (!body.videoUrl) {
+            return jsonResponse({ error: 'videoUrl is required for trim operation' }, 400);
+          }
+          // Return same video as placeholder (actual impl would trim)
+          return jsonResponse({
+            success: true,
+            videoUrl: body.videoUrl,
+            message: 'Video trim placeholder - FFmpeg integration pending',
+          });
+        }
+
+        case 'transition': {
+          if (!body.videoUrls || body.videoUrls.length < 2) {
+            return jsonResponse({ error: 'At least 2 videoUrls required for transition operation' }, 400);
+          }
+          // Return first video as placeholder (actual impl would add transitions)
+          return jsonResponse({
+            success: true,
+            videoUrl: body.videoUrls[0],
+            message: 'Video transition placeholder - FFmpeg integration pending',
+          });
+        }
+
+        default:
+          return jsonResponse({ error: `Unknown operation: ${body.operation}` }, 400);
+      }
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // ============================================================================
   // BRAND VISUAL STYLE ENDPOINTS
   // ============================================================================
 
@@ -570,6 +643,233 @@ export async function handleMediaRoutes(
       presets: STYLE_PRESETS,
       recommended: contentType ? getRecommendedStyles(contentType) : undefined,
     });
+  }
+
+  // GET /api/media/advanced-style-presets - Get advanced style presets
+  if (pathname === '/api/media/advanced-style-presets' && req.method === 'GET') {
+    return jsonResponse({
+      presets: getAdvancedStylePresets(),
+    });
+  }
+
+  // POST /api/media/images/batch-generate - Batch generate images from sections
+  if (pathname === '/api/media/images/batch-generate' && req.method === 'POST') {
+    try {
+      const body = (await req.json()) as {
+        brandId: string;
+        requests: Array<{
+          sectionId: string;
+          stylePreset?: StylePreset;
+          advancedStylePreset?: AdvancedStylePreset;
+          prompt?: string; // Optional prompt override
+        }>;
+        provider?: ImageProvider;
+        aspectRatio?: string;
+        useAntiAi?: boolean;
+      };
+
+      if (!body.brandId) {
+        return jsonResponse({ error: 'brandId is required' }, 400);
+      }
+
+      if (!body.requests || body.requests.length === 0) {
+        return jsonResponse({ error: 'requests array is required and must not be empty' }, 400);
+      }
+
+      // Get brand visual style for defaults
+      const visualStyle = copywritingDb.getVisualStyle(body.brandId);
+      const provider = body.provider || (visualStyle?.default_provider as ImageProvider) || 'seedream';
+      const aspectRatio = body.aspectRatio || visualStyle?.default_aspect_ratio || '1:1';
+
+      const generations: Array<{
+        sectionId: string;
+        imageId: string;
+        status: 'pending' | 'processing' | 'failed';
+        error?: string;
+      }> = [];
+
+      // Process requests sequentially to avoid rate limits
+      for (const request of body.requests) {
+        try {
+          // Get section
+          const section = copywritingDb.getCopySection(request.sectionId);
+          if (!section) {
+            generations.push({
+              sectionId: request.sectionId,
+              imageId: '',
+              status: 'failed',
+              error: 'Section not found',
+            });
+            continue;
+          }
+
+          // Determine prompt
+          let prompt = request.prompt || section.suggested_visual_concept || '';
+          let negativePrompt = '';
+
+          if (!prompt) {
+            generations.push({
+              sectionId: request.sectionId,
+              imageId: '',
+              status: 'failed',
+              error: 'No prompt or visual concept available',
+            });
+            continue;
+          }
+
+          // Apply advanced style preset if specified
+          if (request.advancedStylePreset) {
+            const styled = applyAdvancedStyle(prompt, request.advancedStylePreset);
+            prompt = styled.prompt;
+            negativePrompt = styled.negativePrompt;
+          }
+          // Or apply basic style preset if specified
+          else if (request.stylePreset) {
+            const styled = applyStylePreset(prompt, negativePrompt, request.stylePreset);
+            prompt = styled.prompt;
+            negativePrompt = styled.negativePrompt;
+          }
+
+          // Apply anti-AI techniques if requested (default: true)
+          if (body.useAntiAi !== false) {
+            const enhanced = applyAntiAiTechniques(prompt, 'recommended');
+            prompt = enhanced.prompt;
+          }
+
+          // Create database record
+          const imageRecord = copywritingDb.createGeneratedImage(
+            body.brandId,
+            prompt,
+            provider,
+            {
+              negativePrompt,
+              aspectRatio,
+              stylePreset: request.advancedStylePreset || request.stylePreset,
+            }
+          );
+
+          // Link image to section
+          copywritingDb.updateCopySectionImage(request.sectionId, imageRecord.id);
+
+          // Start generation (async)
+          generateImageAsync(imageRecord.id, prompt, negativePrompt, provider, aspectRatio);
+
+          generations.push({
+            sectionId: request.sectionId,
+            imageId: imageRecord.id,
+            status: 'pending',
+          });
+        } catch (error) {
+          generations.push({
+            sectionId: request.sectionId,
+            imageId: '',
+            status: 'failed',
+            error: getErrorMessage(error),
+          });
+        }
+      }
+
+      return jsonResponse({
+        brandId: body.brandId,
+        generations,
+        totalRequested: body.requests.length,
+        totalStarted: generations.filter(g => g.status === 'pending').length,
+        totalFailed: generations.filter(g => g.status === 'failed').length,
+      });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/media/images/generate-from-section - Generate image from a section
+  if (pathname === '/api/media/images/generate-from-section' && req.method === 'POST') {
+    try {
+      const body = (await req.json()) as {
+        sectionId: string;
+        stylePreset?: StylePreset;
+        advancedStylePreset?: AdvancedStylePreset;
+        prompt?: string; // Optional prompt override
+        provider?: ImageProvider;
+        aspectRatio?: string;
+        useAntiAi?: boolean;
+      };
+
+      if (!body.sectionId) {
+        return jsonResponse({ error: 'sectionId is required' }, 400);
+      }
+
+      // Get section
+      const section = copywritingDb.getCopySection(body.sectionId);
+      if (!section) {
+        return jsonResponse({ error: 'Section not found' }, 404);
+      }
+
+      // Get copy for brand ID
+      const copy = copywritingDb.getGeneratedCopy(section.copy_id);
+      if (!copy) {
+        return jsonResponse({ error: 'Copy not found' }, 404);
+      }
+
+      // Determine prompt
+      let prompt = body.prompt || section.suggested_visual_concept || '';
+      let negativePrompt = '';
+
+      if (!prompt) {
+        return jsonResponse({ error: 'No prompt or visual concept available' }, 400);
+      }
+
+      // Apply advanced style preset if specified
+      if (body.advancedStylePreset) {
+        const styled = applyAdvancedStyle(prompt, body.advancedStylePreset);
+        prompt = styled.prompt;
+        negativePrompt = styled.negativePrompt;
+      }
+      // Or apply basic style preset if specified
+      else if (body.stylePreset) {
+        const styled = applyStylePreset(prompt, negativePrompt, body.stylePreset);
+        prompt = styled.prompt;
+        negativePrompt = styled.negativePrompt;
+      }
+
+      // Apply anti-AI techniques if requested (default: true)
+      if (body.useAntiAi !== false) {
+        const enhanced = applyAntiAiTechniques(prompt, 'recommended');
+        prompt = enhanced.prompt;
+      }
+
+      // Get brand visual style for defaults
+      const visualStyle = copywritingDb.getVisualStyle(copy.brand_id);
+      const provider = body.provider || (visualStyle?.default_provider as ImageProvider) || 'seedream';
+      const aspectRatio = body.aspectRatio || visualStyle?.default_aspect_ratio || '1:1';
+
+      // Create database record
+      const imageRecord = copywritingDb.createGeneratedImage(
+        copy.brand_id,
+        prompt,
+        provider,
+        {
+          copyId: section.copy_id,
+          negativePrompt,
+          aspectRatio,
+          stylePreset: body.advancedStylePreset || body.stylePreset,
+        }
+      );
+
+      // Link image to section
+      copywritingDb.updateCopySectionImage(body.sectionId, imageRecord.id);
+
+      // Start generation (async)
+      generateImageAsync(imageRecord.id, prompt, negativePrompt, provider, aspectRatio);
+
+      return jsonResponse({
+        sectionId: body.sectionId,
+        imageId: imageRecord.id,
+        status: 'pending',
+        message: 'Image generation started',
+      }, 202);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
   }
 
   // GET /api/media/storage/stats - Get storage statistics

@@ -149,6 +149,18 @@ export function injectWorkingDirIntoAgents(
 }
 
 /**
+ * Copywriting context passed from frontend
+ */
+export interface CopywritingContext {
+  brandId?: string;
+  contentTypes?: Array<{
+    id: string;
+    label: string;
+    icon?: string;
+  }>;
+}
+
+/**
  * Get system prompt based on provider and available agents
  * Includes background process instructions and provider-specific features
  */
@@ -157,7 +169,8 @@ export function getSystemPrompt(
   agents?: Record<string, AgentDefinition>,
   userConfig?: UserConfig,
   timezone?: string,
-  mode?: string
+  mode?: string,
+  copywritingContext?: CopywritingContext
 ): string {
   // Start with mode-specific base personality (replaces generic base + mode override)
   let prompt = buildModePrompt(mode || 'general', userConfig);
@@ -186,6 +199,39 @@ export function getSystemPrompt(
       .map(([key, agent]) => `${key}: ${agent.description}`)
       .join('; ');
     prompt += `\n\nSpecialized agents available: ${agentList}. Use Task tool to delegate when appropriate.`;
+  }
+
+  // Copywriting context (brand and content types from UI selection)
+  if ((mode === 'copywriting' || mode === 'media') && copywritingContext) {
+    prompt += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 CONTENT CREATION CONTEXT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+    if (copywritingContext.brandId) {
+      prompt += `\n\nSELECTED BRAND ID: ${copywritingContext.brandId}
+
+BRAND VOICE ENDPOINTS (fetch these before generating content):
+1. GET /api/copywriting/brands/${copywritingContext.brandId}/voice-analysis/instructions
+   → Concise writing instructions derived from LLM analysis of brand content
+
+2. GET /api/copywriting/brands/${copywritingContext.brandId}/voice-analysis
+   → Full voice analysis: voice description, example hooks, vocabulary preferences, writing guidelines
+
+3. GET /api/copywriting/voice/${copywritingContext.brandId}
+   → Tone dimensions (formality, humor, energy, authority scores)
+
+Use endpoint #1 for quick context, #2 for detailed guidelines when crafting content.`;
+    }
+
+    if (copywritingContext.contentTypes && copywritingContext.contentTypes.length > 0) {
+      const contentTypeList = copywritingContext.contentTypes
+        .map((ct, i) => `${i + 1}. ${ct.label}`)
+        .join('\n');
+      prompt += `\n\nSELECTED CONTENT TYPES (user requested these formats):
+${contentTypeList}
+
+IMPORTANT: Create content for ALL selected content types above. If multiple types are selected, create a content series that repurposes the core message across each format.`;
+    }
   }
 
   return prompt;

@@ -22,6 +22,9 @@ export interface Brand {
   content_types: string[];
   created_at: string;
   updated_at: string;
+  // Analysis status (populated from listBrandConfigsWithStatus)
+  has_voice_analysis?: boolean;
+  analysis_confidence?: number;
 }
 
 export interface VoiceProfile {

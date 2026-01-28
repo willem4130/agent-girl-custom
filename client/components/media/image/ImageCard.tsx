@@ -2,6 +2,7 @@
 import { memo, useState } from "react";
 
 import type { GeneratedImage } from "./types";
+import { getProviderDisplayName, getAspectRatioLabel } from "./types";
 
 interface ImageCardProps {
   image: GeneratedImage;
@@ -173,10 +174,63 @@ const ImageCard = memo(function ImageCard({
         </button>
       </div>
 
-      {/* Bottom prompt text */}
+      {/* Bottom info area */}
       <div className="pointer-events-none absolute right-0 bottom-0 left-0 p-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-        <p className="line-clamp-2 text-xs text-white/80">{image.prompt}</p>
+        {/* Prompt text */}
+        <p className="line-clamp-2 text-xs text-white/90 mb-2">{image.prompt}</p>
+
+        {/* Metadata badges */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Provider badge */}
+          {image.provider && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-pink-500/80 text-[10px] font-medium text-white">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {getProviderDisplayName(image.provider)}
+            </span>
+          )}
+
+          {/* Aspect ratio badge */}
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-medium text-white/90">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
+            </svg>
+            {getAspectRatioLabel(image.aspectRatio) || image.aspectRatio}
+          </span>
+
+          {/* Favorite indicator */}
+          {image.isFavorite && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-yellow-500/80 text-[10px] font-medium text-white">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+              </svg>
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* Status indicator (when not completed) */}
+      {image.status && image.status !== 'completed' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+          {image.status === 'pending' || image.status === 'processing' ? (
+            <div className="flex flex-col items-center gap-2">
+              <div className="size-8 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              <span className="text-xs text-white/80 capitalize">{image.status}...</span>
+            </div>
+          ) : image.status === 'failed' ? (
+            <div className="flex flex-col items-center gap-2">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-red-400">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                <path d="M15 9L9 15M9 9L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+              <span className="text-xs text-red-400">Failed</span>
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 });

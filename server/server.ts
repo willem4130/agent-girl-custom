@@ -54,6 +54,7 @@ import { handleCommandRoutes } from "./routes/commands";
 import { handleCopywritingRoutes } from "./routes/copywriting";
 import { handleMediaRoutes } from "./routes/media";
 import { handleContentHubRoutes } from "./routes/content-hub";
+import { handleWorkflowRoutes } from "./routes/workflows";
 import { handleWebSocketMessage } from "./websocket/messageHandlers";
 import type { ServerWebSocket, Server as ServerType } from "bun";
 
@@ -184,6 +185,12 @@ const server = Bun.serve({
     const contentHubResponse = await handleContentHubRoutes(req, url);
     if (contentHubResponse) {
       return contentHubResponse;
+    }
+
+    // Try workflow routes
+    const workflowResponse = await handleWorkflowRoutes(req, url);
+    if (workflowResponse) {
+      return workflowResponse;
     }
 
     // Try to handle as static file

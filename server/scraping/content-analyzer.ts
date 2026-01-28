@@ -10,6 +10,7 @@
  * - Self-instruction guidelines (LLM-generated writing guide for the brand)
  */
 
+import Anthropic from '@anthropic-ai/sdk';
 import type { CrawledPage } from './deep-crawler';
 import { extractAllTextContent, getCrawlSummary } from './deep-crawler';
 import type { ScrapedContent } from '../copywriting/database';
@@ -64,7 +65,6 @@ export interface AnalysisContext {
 // CONSTANTS
 // ============================================================================
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-20250514';
 const MAX_TOKENS = 4096;
 
@@ -76,15 +76,26 @@ const MIN_CONTENT_PIECES = 5;
 // HELPER FUNCTIONS
 // ============================================================================
 
+// Singleton Anthropic client
+let anthropicClient: Anthropic | null = null;
+
 /**
- * Get API key from environment
+ * Get or create Anthropic client
+ * Uses ANTHROPIC_API_KEY from environment
  */
-function getApiKey(): string {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    throw new Error('ANTHROPIC_API_KEY not set in environment');
+function getAnthropicClient(): Anthropic {
+  if (!anthropicClient) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        'ANTHROPIC_API_KEY not set in environment. ' +
+        'For content analysis, please add your API key to .env file. ' +
+        'Get your key from https://console.anthropic.com/'
+      );
+    }
+    anthropicClient = new Anthropic({ apiKey });
   }
-  return key;
+  return anthropicClient;
 }
 
 /**
@@ -241,45 +252,28 @@ export async function analyzeContent(
 
   console.log(`[ContentAnalyzer] Analyzing ${wordCount} words from ${contentPieces} content pieces`);
 
-  // Call Claude API
-  const apiKey = getApiKey();
+  // Call Claude API using SDK
+  const client = getAnthropicClient();
 
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    }),
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: MAX_TOKENS,
+    messages: [
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
   });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Claude API error: ${response.status} - ${error}`);
-  }
-
-  const result = (await response.json()) as {
-    content: Array<{ type: string; text?: string }>;
-  };
-
-  // Extract JSON from response
-  const textContent = result.content.find((c) => c.type === 'text');
-  if (!textContent?.text) {
+  // Extract text from response
+  const textContent = response.content.find((c) => c.type === 'text');
+  if (!textContent || textContent.type !== 'text') {
     throw new Error('No text content in Claude response');
   }
 
   // Parse JSON from response (handle potential markdown code blocks)
-  let jsonStr = textContent.text;
+  let jsonStr = textContent.text as string;
 
   // Remove markdown code blocks if present
   const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
