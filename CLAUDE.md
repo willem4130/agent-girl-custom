@@ -30,6 +30,7 @@ agent-girl-custom/
 │   │   └── shared/               # Cross-mode commands
 │   ├── copywriting/              # Copywriting module
 │   │   ├── database.ts           # Brand/voice/copy database
+│   │   ├── copy-formatter.ts     # Multi-format export (WP, LinkedIn, MD)
 │   │   ├── section-analyzer.ts   # LLM-based copy section analysis
 │   │   └── strategies/           # Content strategies per platform
 │   ├── media-generation/         # Media generation module
@@ -58,6 +59,7 @@ agent-girl-custom/
 │   │   │   ├── video/            # Video components
 │   │   │   └── assets/           # Asset management
 │   │   ├── message/              # Message rendering
+│   │   │   └── SaveToCopyLibrary.tsx  # Per-section save overlay
 │   │   ├── sidebar/              # Navigation
 │   │   ├── header/               # Header components
 │   │   └── ui/                   # Base components (Radix UI)
@@ -75,7 +77,8 @@ agent-girl-custom/
 │   ├── lib/
 │   │   ├── fal/                  # FAL.ai client configs
 │   │   ├── video-editor/         # Client-side video pipeline
-│   │   └── stores/               # Zustand stores
+│   │   └── stores/               # State management
+│   │       └── copywritingContext.tsx  # Brand/session state sharing
 │   └── utils/                    # Client utilities
 ├── data/                         # SQLite databases
 └── dist/                         # Build output
@@ -151,6 +154,7 @@ Read server output and fix ALL warnings/errors.
 - `GET /api/copywriting/brands` - List brands
 - `POST /api/copywriting/brands` - Create brand
 - `GET /api/copywriting/copy` - List generated copy
+- `POST /api/copywriting/copy/save-from-chat` - Save chat content to library
 - `POST /api/copywriting/copy/analyze-sections` - Analyze copy sections
 - `POST /api/copywriting/images/batch` - Batch generate images for sections
 
@@ -168,6 +172,16 @@ Read server output and fix ALL warnings/errors.
 - Section breakdown with visual concept suggestions
 - Batch image generation for multiple sections
 - Links images to copy sections
+
+### Save to Library (`SaveToCopyLibrary`)
+- Hover overlay on chat messages in copywriting mode
+- Auto-detects copy sections using patterns:
+  - `## POST 1:`, `## POST 2:` headings
+  - `## Variation 1:`, `## Variatie 1:` (Dutch)
+  - Markdown horizontal rules `---`
+  - Explicit `<!-- copy-section -->` markers
+- Per-section save buttons + "Save All" option
+- Brand context auto-passed to LLM via `CopywritingContext`
 
 ### Copy Format API
 - `GET /api/copywriting/copy/item/:id/formatted` - Get all formats
