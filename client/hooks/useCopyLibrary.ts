@@ -58,6 +58,15 @@ export interface CopyWithMedia extends GeneratedCopy {
   images: GeneratedImage[];
 }
 
+export type CopyFormat = 'raw' | 'wordpress' | 'linkedin' | 'markdown';
+
+export interface FormattedCopy {
+  raw: string;
+  wordpress: string;
+  linkedin: string;
+  markdown: string;
+}
+
 // ============================================================================
 // HOOK
 // ============================================================================
@@ -184,6 +193,41 @@ export function useCopyLibrary(brandId: string | null) {
     }
   }, [brandId]);
 
+  /**
+   * Get formatted copy in all formats (wordpress, linkedin, markdown, raw)
+   */
+  const getFormattedCopy = useCallback(async (copyId: string): Promise<FormattedCopy | null> => {
+    try {
+      const response = await fetch(`${COPYWRITING_API}/copy/item/${copyId}/formatted`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = (await response.json()) as { formats: FormattedCopy };
+      return data.formats;
+    } catch (err) {
+      console.error('Failed to fetch formatted copy:', err);
+      return null;
+    }
+  }, []);
+
+  /**
+   * Copy text to clipboard with the specified format
+   */
+  const copyToClipboard = useCallback(async (copyId: string, format: CopyFormat): Promise<boolean> => {
+    try {
+      const response = await fetch(`${COPYWRITING_API}/copy/item/${copyId}/format/${format}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = (await response.json()) as { text: string };
+      await navigator.clipboard.writeText(data.text);
+      return true;
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+      return false;
+    }
+  }, []);
+
   return {
     // State
     copies,
@@ -202,5 +246,7 @@ export function useCopyLibrary(brandId: string | null) {
     isSectionSelected,
     getSelectedSections,
     refreshCopy,
+    getFormattedCopy,
+    copyToClipboard,
   };
 }

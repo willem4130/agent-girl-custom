@@ -76,6 +76,7 @@ export interface BrandVoiceProfile {
 export interface GeneratedCopy {
   id: string;
   brand_id: string;
+  session_id?: string; // Links to chat session where copy was generated
   voice_profile_version: number;
 
   // Content
@@ -456,6 +457,7 @@ class CopywritingDatabase {
       CREATE TABLE IF NOT EXISTS generated_copy (
         id TEXT PRIMARY KEY,
         brand_id TEXT NOT NULL,
+        session_id TEXT,
         voice_profile_version INTEGER DEFAULT 1,
         content_type TEXT NOT NULL,
         platform TEXT NOT NULL,
@@ -473,6 +475,14 @@ class CopywritingDatabase {
       )
     `);
 
+    // Migration: add session_id column if it doesn't exist
+    try {
+      this.db.run(`ALTER TABLE generated_copy ADD COLUMN session_id TEXT`);
+      console.log('✅ Added session_id column to generated_copy');
+    } catch {
+      // Column already exists
+    }
+
     this.db.run(`
       CREATE INDEX IF NOT EXISTS idx_generated_copy_brand
       ON generated_copy(brand_id)
@@ -481,6 +491,11 @@ class CopywritingDatabase {
     this.db.run(`
       CREATE INDEX IF NOT EXISTS idx_generated_copy_status
       ON generated_copy(status)
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_generated_copy_session
+      ON generated_copy(session_id)
     `);
 
     // Engagement metrics
@@ -1146,6 +1161,7 @@ class CopywritingDatabase {
     options: {
       contentType: string;
       platform: string;
+      sessionId?: string;
       variationNumber?: number;
       frameworkUsed?: string;
       triggersApplied?: string[];
@@ -1159,12 +1175,13 @@ class CopywritingDatabase {
 
     this.db.run(
       `INSERT INTO generated_copy
-        (id, brand_id, voice_profile_version, content_type, platform, copy_text, variation_number,
+        (id, brand_id, session_id, voice_profile_version, content_type, platform, copy_text, variation_number,
          framework_used, triggers_applied, tone_scores, quality_score, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         brandId,
+        options.sessionId ?? null,
         options.voiceProfileVersion ?? 1,
         options.contentType,
         options.platform,
@@ -1182,6 +1199,7 @@ class CopywritingDatabase {
     return {
       id,
       brand_id: brandId,
+      session_id: options.sessionId,
       voice_profile_version: options.voiceProfileVersion ?? 1,
       content_type: options.contentType,
       platform: options.platform,

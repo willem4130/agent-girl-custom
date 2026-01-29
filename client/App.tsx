@@ -22,6 +22,7 @@ import React, { useEffect, useState } from "react";
 import { ChatContainer } from "./components/chat/ChatContainer";
 import { PreLoader } from "./components/preloader/PreLoader";
 import { Toaster } from "sonner";
+import { CopywritingProvider } from "./lib/stores/copywritingContext";
 
 const App: React.FC = () => {
   const [showPreLoader, setShowPreLoader] = useState(true);
@@ -33,7 +34,7 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <>
+    <CopywritingProvider>
       {showPreLoader && <PreLoader onComplete={() => setShowPreLoader(false)} />}
       <ChatContainer />
       <Toaster
@@ -46,7 +47,7 @@ const App: React.FC = () => {
           },
         }}
       />
-    </>
+    </CopywritingProvider>
   );
 };
 

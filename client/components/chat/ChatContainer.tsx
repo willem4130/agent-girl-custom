@@ -33,9 +33,10 @@ import { BuildWizard } from '../build-wizard/BuildWizard';
 import { ScrollButton } from './ScrollButton';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSessionAPI, type Session } from '../../hooks/useSessionAPI';
-import { Menu, Edit3, PanelRightOpen, PanelRightClose } from 'lucide-react';
+import { Menu, Edit3, PanelRightOpen, PanelRightClose, FolderOpen } from 'lucide-react';
 import { CopyLibraryPanel } from '../copywriting';
 import { useBrandAPI } from '../../hooks/useBrandAPI';
+import { useCopywritingContext } from '../../lib/stores/copywritingContext';
 import type { Message } from '../message/types';
 import { toast } from '../../utils/toast';
 import { showError } from '../../utils/errorMessages';
@@ -108,6 +109,9 @@ export function ChatContainer() {
   const [brandsList, setBrandsList] = useState<{ id: string; name: string }[]>([]);
   const brandAPI = useBrandAPI();
 
+  // Pending working directory (selected before session exists)
+  const [pendingWorkingDirectory, setPendingWorkingDirectory] = useState<string | null>(null);
+
   // Message queue for when agent is busy (enables continuous input)
   const [pendingMessages, setPendingMessages] = useState<Array<{
     text: string;
@@ -176,6 +180,14 @@ export function ChatContainer() {
       });
     }
   }, [currentSessionMode]);
+
+  // Sync state to CopywritingContext for SaveToCopyLibrary component
+  const copywritingContext = useCopywritingContext();
+  useEffect(() => {
+    copywritingContext.setBrandId(selectedBrandId);
+    copywritingContext.setSessionId(currentSessionId);
+    copywritingContext.setMode(currentSessionMode);
+  }, [selectedBrandId, currentSessionId, currentSessionMode]);
 
 
   const loadSessions = async () => {
@@ -348,6 +360,34 @@ export function ChatContainer() {
     } else {
       toast.error('Error', {
         description: result.error || 'Failed to change working directory'
+      });
+    }
+  };
+
+  // Pick working directory before session exists (for copywriting mode)
+  const handlePickPendingDirectory = async () => {
+    try {
+      const response = await fetch(`${window.location.protocol}//${window.location.host}/api/pick-directory`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const result = await response.json() as { success: boolean; path?: string; cancelled?: boolean; error?: string };
+
+      if (result.success && result.path) {
+        setPendingWorkingDirectory(result.path);
+        toast.success('Project folder selected', {
+          description: result.path.split('/').pop() || result.path
+        });
+      } else if (!result.cancelled && result.error) {
+        toast.error('Error', {
+          description: result.error
+        });
+      }
+    } catch (error) {
+      console.error('Failed to pick directory:', error);
+      toast.error('Error', {
+        description: 'Failed to open directory picker'
       });
     }
   };
@@ -1076,6 +1116,13 @@ export function ChatContainer() {
         // Update state and load sessions
         setCurrentSessionId(sessionId);
         await loadSessions();
+
+        // Apply pending working directory if set (for copywriting mode)
+        if (pendingWorkingDirectory) {
+          await sessionAPI.updateWorkingDirectory(sessionId, pendingWorkingDirectory);
+          setPendingWorkingDirectory(null);
+          await loadSessions(); // Refresh to show updated directory
+        }
       }
 
       const userMessage: Message = {
@@ -1136,6 +1183,14 @@ export function ChatContainer() {
       // Detect user's timezone
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+      // Build copywriting context - use provided context or auto-generate from current state
+      const effectiveMode = mode || currentSessionMode;
+      const effectiveCopywritingContext = copywritingContext || (
+        (effectiveMode === 'copywriting' || effectiveMode === 'media') && selectedBrandId
+          ? { brandId: selectedBrandId }
+          : undefined
+      );
+
       // Use local sessionId variable (guaranteed to be set)
       sendMessage({
         type: 'chat',
@@ -1143,8 +1198,8 @@ export function ChatContainer() {
         sessionId: sessionId,
         model: selectedModel,
         timezone: userTimezone,
-        // Include copywriting context if provided (brand and content types)
-        ...(copywritingContext ? { copywritingContext } : {}),
+        // Include copywriting context when in copywriting/media mode with brand selected
+        ...(effectiveCopywritingContext ? { copywritingContext: effectiveCopywritingContext } : {}),
       });
 
       setInputValue('');
@@ -1271,13 +1326,47 @@ export function ChatContainer() {
             <div className="header-right">
               {/* Radio Player */}
               <RadioPlayer />
-              {/* Working Directory Display */}
-              {currentSessionId && sessions.find(s => s.id === currentSessionId)?.working_directory && (
+              {/* Brand Selector for Copywriting Mode */}
+              {currentSessionMode === 'copywriting' && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
+                  <span className="text-xs font-medium text-white/50">Brand:</span>
+                  <select
+                    value={selectedBrandId || ''}
+                    onChange={(e) => setSelectedBrandId(e.target.value || null)}
+                    className="bg-transparent text-sm text-white border-none outline-none cursor-pointer min-w-[120px]"
+                    style={{ WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none' }}
+                  >
+                    <option value="" className="bg-[rgb(30,32,34)] text-white">Select brand...</option>
+                    {brandsList.map((brand) => (
+                      <option key={brand.id} value={brand.id} className="bg-[rgb(30,32,34)] text-white">{brand.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {/* Working Directory Display / Project Folder Picker - Always visible */}
+              {currentSessionId && sessions.find(s => s.id === currentSessionId)?.working_directory ? (
                 <WorkingDirectoryDisplay
                   directory={sessions.find(s => s.id === currentSessionId)?.working_directory || ''}
                   sessionId={currentSessionId}
                   onChangeDirectory={handleChangeDirectory}
                 />
+              ) : (
+                <button
+                  onClick={handlePickPendingDirectory}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                    pendingWorkingDirectory
+                      ? 'bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/20'
+                      : 'bg-white/5 border-white/10 hover:bg-white/10'
+                  }`}
+                  title={pendingWorkingDirectory || "Select project folder for context"}
+                >
+                  <FolderOpen size={16} className={pendingWorkingDirectory ? 'text-blue-400' : 'text-white/50'} />
+                  <span className={`text-sm font-medium ${pendingWorkingDirectory ? 'text-blue-300' : 'text-white/70'}`}>
+                    {pendingWorkingDirectory
+                      ? pendingWorkingDirectory.split('/').pop()
+                      : 'Select Project...'}
+                  </span>
+                </button>
               )}
               {/* About Button */}
               <AboutButton />
@@ -1311,24 +1400,58 @@ export function ChatContainer() {
             </div>
           </div>
         ) : messages.length === 0 ? (
-          // New Chat Welcome Screen
-          <NewChatWelcome
-            key={currentSessionId || 'welcome'}
-            inputValue={inputValue}
-            onInputChange={setInputValue}
-            onSubmit={handleSubmit}
-            onStop={handleStop}
-            disabled={!isConnected}
-            isGenerating={isLoading}
-            isPlanMode={isPlanMode}
-            onTogglePlanMode={handleTogglePlanMode}
-            availableCommands={availableCommands}
-            onOpenBuildWizard={handleOpenBuildWizard}
-            mode={currentSessionMode}
-            onModeChange={setCurrentSessionMode}
-            sessionId={currentSessionId || undefined}
-            pendingMessagesCount={pendingMessages.length}
-          />
+          // New Chat Welcome Screen (with optional sidebar for copywriting)
+          <div className="flex flex-1 overflow-hidden">
+            <NewChatWelcome
+              key={currentSessionId || 'welcome'}
+              inputValue={inputValue}
+              onInputChange={setInputValue}
+              onSubmit={handleSubmit}
+              onStop={handleStop}
+              disabled={!isConnected}
+              isGenerating={isLoading}
+              isPlanMode={isPlanMode}
+              onTogglePlanMode={handleTogglePlanMode}
+              availableCommands={availableCommands}
+              onOpenBuildWizard={handleOpenBuildWizard}
+              mode={currentSessionMode}
+              onModeChange={setCurrentSessionMode}
+              sessionId={currentSessionId || undefined}
+              pendingMessagesCount={pendingMessages.length}
+            />
+            {/* Copy Library Panel - Right sidebar for copywriting mode */}
+            {currentSessionMode === 'copywriting' && (
+              <div
+                className="flex flex-col border-l border-white/10 bg-[rgb(30,32,34)] transition-all duration-200"
+                style={{ width: isCopyPanelOpen ? '380px' : '48px', flexShrink: 0 }}
+              >
+                {/* Panel Toggle */}
+                <button
+                  onClick={() => setIsCopyPanelOpen(!isCopyPanelOpen)}
+                  className="flex items-center justify-center p-3 border-b border-white/10 hover:bg-white/5 transition-colors"
+                  title={isCopyPanelOpen ? 'Collapse panel' : 'Expand Copy Library'}
+                >
+                  {isCopyPanelOpen ? (
+                    <PanelRightClose size={18} className="text-white/60" />
+                  ) : (
+                    <PanelRightOpen size={18} className="text-white/60" />
+                  )}
+                </button>
+                {/* Panel Content with custom scrollbar */}
+                {isCopyPanelOpen && (
+                  <div
+                    className="flex-1 overflow-y-auto p-4"
+                    style={{
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: 'rgba(255,255,255,0.2) transparent',
+                    }}
+                  >
+                    <CopyLibraryPanel brandId={selectedBrandId} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         ) : (
           // Chat Interface
           <div className="flex flex-1 overflow-hidden">
@@ -1363,7 +1486,7 @@ export function ChatContainer() {
               />
             </div>
 
-            {/* Copy Library Panel - Right sidebar for copywriting mode */}
+            {/* Copy Library Panel - Right sidebar (always visible) */}
             {currentSessionMode === 'copywriting' && (
               <div
                 className="flex flex-col border-l border-white/10 bg-[rgb(30,32,34)] transition-all duration-200"

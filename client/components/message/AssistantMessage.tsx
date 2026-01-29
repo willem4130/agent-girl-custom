@@ -27,8 +27,10 @@ import { ThinkingBlock } from './ThinkingBlock';
 import { CodeBlockWithCopy } from './CodeBlockWithCopy';
 import { URLBadge } from './URLBadge';
 import { MermaidDiagram } from './MermaidDiagram';
+import { SaveToCopyLibrary } from './SaveToCopyLibrary';
 import { Shield } from 'lucide-react';
 import { showError } from '../../utils/errorMessages';
+import { useCopywritingContext } from '../../lib/stores/copywritingContext';
 
 interface AssistantMessageProps {
   message: AssistantMessageType;
@@ -1755,6 +1757,7 @@ function TextComponent({ text }: { text: TextBlock }) {
 export function AssistantMessage({ message }: AssistantMessageProps) {
   const [showMetadata, setShowMetadata] = useState(false);
   const [copied, setCopied] = useState(false);
+  const { brandId, sessionId, isCopywritingMode, refreshCopyLibrary } = useCopywritingContext();
 
   // Extract text content from message for copying
   const getTextContent = () => {
@@ -1803,6 +1806,26 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
             <div className="space-y-4 mt-2">
               {message.content.map((block, index) => {
                 if (block.type === 'text') {
+                  // Skip special messages from SaveToCopyLibrary wrapper
+                  const isSpecialMessage = block.text.includes('--- Context cleared') ||
+                                          block.text.includes('--- History compacted') ||
+                                          block.text.includes('--- Auto-compact') ||
+                                          block.text === 'Compacting conversation...';
+
+                  // Wrap with SaveToCopyLibrary in copywriting mode for saveable content
+                  if (isCopywritingMode && !isSpecialMessage && block.text.trim().length > 50) {
+                    return (
+                      <SaveToCopyLibrary
+                        key={index}
+                        content={block.text}
+                        brandId={brandId}
+                        sessionId={sessionId}
+                        onSaved={refreshCopyLibrary}
+                      >
+                        <TextComponent text={block} />
+                      </SaveToCopyLibrary>
+                    );
+                  }
                   return <TextComponent key={index} text={block} />;
                 } else if (block.type === 'tool_use') {
                   return <ToolUseComponent key={index} toolUse={block} />;

@@ -17,3 +17,4 @@ export type { BriefingData, WizardResult } from './CopywritingWizard';
 export { MediaGenerationPanel } from './media/MediaGenerationPanel';
 export { CopyLibraryPanel } from './CopyLibraryPanel';
 export { ImageGenerationSlideOver } from './ImageGenerationSlideOver';
+export { CopyExportModal } from './CopyExportModal';

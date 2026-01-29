@@ -772,12 +772,7 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
                 />
               )}
 
-              {/* Copy Library Panel when brand is selected */}
-              {selectedBrandId && (
-                <div style={{ marginTop: '16px' }}>
-                  <CopyLibraryPanel brandId={selectedBrandId} />
-                </div>
-              )}
+              {/* Copy Library Panel moved to right sidebar in ChatContainer */}
             </>
           )}
 

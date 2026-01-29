@@ -38,6 +38,12 @@ import {
   type VoiceAnalysisResult,
 } from '../scraping/content-analyzer';
 import { analyzeCopySections } from '../copywriting/section-analyzer';
+import {
+  formatCopy,
+  getCopyInFormat,
+  type CopyFormat,
+  type FormattedCopy,
+} from '../copywriting/copy-formatter';
 
 /**
  * Handle copywriting-related API routes
@@ -671,6 +677,84 @@ export async function handleCopywritingRoutes(
         return jsonResponse({ error: 'Copy not found' }, 404);
       }
       return jsonResponse(copy);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/copy/item/:copyId/formatted - Get copy in all formats
+  const copyFormattedMatch = pathname.match(
+    /^\/api\/copywriting\/copy\/item\/([^/]+)\/formatted$/
+  );
+  if (copyFormattedMatch && req.method === 'GET') {
+    try {
+      const copy = copywritingDb.getGeneratedCopy(copyFormattedMatch[1]);
+      if (!copy) {
+        return jsonResponse({ error: 'Copy not found' }, 404);
+      }
+
+      const formatted: FormattedCopy = formatCopy(copy.copy_text);
+
+      return jsonResponse({
+        id: copy.id,
+        platform: copy.platform,
+        content_type: copy.content_type,
+        formats: formatted,
+      });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/copy/item/:copyId/format/:format - Get copy in specific format
+  const copyFormatMatch = pathname.match(
+    /^\/api\/copywriting\/copy\/item\/([^/]+)\/format\/(raw|wordpress|linkedin|markdown)$/
+  );
+  if (copyFormatMatch && req.method === 'GET') {
+    try {
+      const copy = copywritingDb.getGeneratedCopy(copyFormatMatch[1]);
+      if (!copy) {
+        return jsonResponse({ error: 'Copy not found' }, 404);
+      }
+
+      const format = copyFormatMatch[2] as CopyFormat;
+      const formattedText = getCopyInFormat(copy.copy_text, format);
+
+      return jsonResponse({
+        id: copy.id,
+        platform: copy.platform,
+        content_type: copy.content_type,
+        format,
+        text: formattedText,
+      });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/copywriting/copy/save-from-chat - Save content from chat to Copy Library
+  if (pathname === '/api/copywriting/copy/save-from-chat' && req.method === 'POST') {
+    try {
+      const body = (await req.json()) as {
+        brandId: string;
+        sessionId?: string;
+        copyText: string;
+        platform?: string;
+        contentType?: string;
+      };
+
+      if (!body.brandId || !body.copyText) {
+        return jsonResponse({ error: 'brandId and copyText are required' }, 400);
+      }
+
+      const copy = copywritingDb.createGeneratedCopy(body.brandId, body.copyText, {
+        contentType: body.contentType || 'linkedin_post',
+        platform: body.platform || 'linkedin',
+        sessionId: body.sessionId,
+      });
+
+      console.log('📝 Saved copy from chat to library:', copy.id);
+      return jsonResponse({ success: true, copy }, 201);
     } catch (error) {
       return jsonResponse({ error: getErrorMessage(error) }, 500);
     }

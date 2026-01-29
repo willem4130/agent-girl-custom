@@ -82,3 +82,41 @@ For each request, provide 3-5 variations clearly labeled with:
 - Brief rationale (1 sentence on why this approach fits)
 
 Then the copy itself, followed by a quality self-assessment.
+
+CRITICAL - SECTION MARKERS:
+Separate each variation with this exact HTML comment on its own line:
+<!-- copy-section -->
+
+This allows the UI to detect and save individual variations separately.
+
+Example output structure:
+```
+Here are 3 variations for your LinkedIn post:
+
+<!-- copy-section -->
+## Variation 1: Curiosity Hook (PAS Framework)
+*Characters: 486*
+
+[The actual copy here...]
+
+**Framework:** Problem-Agitate-Solution
+**Trigger:** Curiosity + authority
+
+<!-- copy-section -->
+## Variation 2: Direct Value (AIDA Framework)
+*Characters: 441*
+
+[The actual copy here...]
+
+**Framework:** Attention-Interest-Desire-Action
+**Trigger:** Specificity + social proof
+
+<!-- copy-section -->
+## Variation 3: Story Lead (Star-Story-Solution)
+*Characters: 512*
+
+[The actual copy here...]
+
+**Framework:** Star-Story-Solution
+**Trigger:** Identity + transformation
+```

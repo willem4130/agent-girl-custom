@@ -163,10 +163,16 @@ Read server output and fix ALL warnings/errors.
 ## Key UI Components
 
 ### Copy Library (`CopyLibraryPanel`)
-- Displays generated copy with smart titles (extracts headline or first line)
+- Right-side panel in copywriting mode with search and filters
+- Multi-format export: WordPress HTML, LinkedIn, Markdown, Plain text
 - Section breakdown with visual concept suggestions
 - Batch image generation for multiple sections
 - Links images to copy sections
+
+### Copy Format API
+- `GET /api/copywriting/copy/item/:id/formatted` - Get all formats
+- `GET /api/copywriting/copy/item/:id/format/:format` - Get specific format
+- Formats: `wordpress`, `linkedin`, `markdown`, `raw`
 
 ### Image Gallery (`ImageCard`)
 - Provider badges (Nano Banana, Seedream, etc.)

@@ -17,11 +17,111 @@ import {
   Square,
   RefreshCw,
   Wand2,
+  Copy,
+  Check,
+  Search,
+  Filter,
+  X,
+  Download,
 } from 'lucide-react';
-import { useCopyLibrary, type CopyWithMedia, type CopySection } from '../../hooks/useCopyLibrary';
+import { useCopyLibrary, type CopyWithMedia, type CopySection, type CopyFormat } from '../../hooks/useCopyLibrary';
 import { useSectionAnalyzer } from '../../hooks/useSectionAnalyzer';
+import { useCopywritingContext } from '../../lib/stores/copywritingContext';
 import type { AdvancedStylePreset } from '../../hooks/useBatchImageGeneration';
 import { ImageGenerationSlideOver } from './ImageGenerationSlideOver';
+import { CopyExportModal } from './CopyExportModal';
+
+// ============================================================================
+// COPY FORMAT BUTTONS COMPONENT
+// ============================================================================
+
+interface CopyFormatButtonsProps {
+  copyId: string;
+  onCopy: (copyId: string, format: CopyFormat) => Promise<boolean>;
+}
+
+function CopyFormatButtons({ copyId, onCopy }: CopyFormatButtonsProps) {
+  const [copiedFormat, setCopiedFormat] = useState<CopyFormat | null>(null);
+
+  const handleCopy = async (format: CopyFormat) => {
+    const success = await onCopy(copyId, format);
+    if (success) {
+      setCopiedFormat(format);
+      setTimeout(() => setCopiedFormat(null), 2000);
+    }
+  };
+
+  const formats: { format: CopyFormat; label: string; color: string }[] = [
+    { format: 'wordpress', label: 'WordPress', color: '#21759B' },
+    { format: 'linkedin', label: 'LinkedIn', color: '#0A66C2' },
+    { format: 'markdown', label: 'Markdown', color: '#83CD29' },
+    { format: 'raw', label: 'Plain', color: 'rgba(255, 255, 255, 0.6)' },
+  ];
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '8px 12px',
+        backgroundColor: 'rgba(0, 0, 0, 0.2)',
+        borderRadius: '8px',
+        marginBottom: '12px',
+      }}
+    >
+      <span
+        style={{
+          fontSize: '11px',
+          color: 'rgba(255, 255, 255, 0.5)',
+          marginRight: '4px',
+        }}
+      >
+        Copy as:
+      </span>
+      {formats.map(({ format, label, color }) => (
+        <button
+          key={format}
+          onClick={() => handleCopy(format)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '4px 10px',
+            fontSize: '11px',
+            fontWeight: 500,
+            color: copiedFormat === format ? '#10B981' : color,
+            backgroundColor:
+              copiedFormat === format
+                ? 'rgba(16, 185, 129, 0.1)'
+                : 'rgba(255, 255, 255, 0.05)',
+            border: `1px solid ${
+              copiedFormat === format
+                ? 'rgba(16, 185, 129, 0.3)'
+                : 'rgba(255, 255, 255, 0.1)'
+            }`,
+            borderRadius: '4px',
+            cursor: 'pointer',
+            transition: 'all 150ms',
+          }}
+          onMouseEnter={(e) => {
+            if (copiedFormat !== format) {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (copiedFormat !== format) {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+            }
+          }}
+        >
+          {copiedFormat === format ? <Check size={12} /> : <Copy size={12} />}
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ============================================================================
 // SECTION ITEM COMPONENT
@@ -227,6 +327,8 @@ interface CopyCardProps {
   onToggleSection: (sectionId: string) => void;
   onSelectAllSections: () => void;
   onGenerateForSection: (section: CopySection) => void;
+  onCopyFormat: (copyId: string, format: CopyFormat) => Promise<boolean>;
+  onExport: (copyId: string, title: string) => void;
   getSectionTypeLabel: (type: CopySection['section_type']) => string;
   getSectionTypeColor: (type: CopySection['section_type']) => string;
 }
@@ -278,6 +380,8 @@ function CopyCard({
   onToggleSection,
   onSelectAllSections,
   onGenerateForSection,
+  onCopyFormat,
+  onExport,
   getSectionTypeLabel,
   getSectionTypeColor,
 }: CopyCardProps) {
@@ -403,11 +507,33 @@ function CopyCard({
               {imageCount} images
             </span>
           </div>
-          {isExpanded ? (
-            <ChevronUp size={18} style={{ color: 'rgba(255, 255, 255, 0.5)' }} />
-          ) : (
-            <ChevronDown size={18} style={{ color: 'rgba(255, 255, 255, 0.5)' }} />
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Export Button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onExport(copy.id, generateCopyTitle(copy));
+              }}
+              style={{
+                padding: '6px',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.2)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Export copy"
+            >
+              <Download size={14} style={{ color: '#3B82F6' }} />
+            </button>
+            {isExpanded ? (
+              <ChevronUp size={18} style={{ color: 'rgba(255, 255, 255, 0.5)' }} />
+            ) : (
+              <ChevronDown size={18} style={{ color: 'rgba(255, 255, 255, 0.5)' }} />
+            )}
+          </div>
         </div>
       </button>
 
@@ -438,6 +564,9 @@ function CopyCard({
               {copy.copy_text}
             </p>
           </div>
+
+          {/* Copy Format Buttons */}
+          <CopyFormatButtons copyId={copy.id} onCopy={onCopyFormat} />
 
           {/* Actions bar */}
           <div
@@ -671,6 +800,8 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
     selectAllSections,
     clearSelection,
     refreshCopy,
+    copyToClipboard,
+    getFormattedCopy,
   } = useCopyLibrary(brandId);
 
   const {
@@ -683,9 +814,41 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
   const [expandedCopyIds, setExpandedCopyIds] = useState<Set<string>>(new Set());
   const [isGenerating, _setIsGenerating] = useState(false);
 
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterPlatform, setFilterPlatform] = useState<string>('all');
+  const [filterContentType, setFilterContentType] = useState<string>('all');
+  const [showFilters, setShowFilters] = useState(false);
+
   // Slide-over state for image generation
   const [isSlideOverOpen, setIsSlideOverOpen] = useState(false);
   const [selectedSection, setSelectedSection] = useState<CopySection | null>(null);
+
+  // Export modal state
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportCopyId, setExportCopyId] = useState<string | null>(null);
+  const [exportCopyTitle, setExportCopyTitle] = useState<string>('');
+
+  // Get unique platforms and content types for filters
+  const platforms = Array.from(new Set(copies.map(c => c.platform))).filter(Boolean);
+  const contentTypes = Array.from(new Set(copies.map(c => c.content_type))).filter(Boolean);
+
+  // Filter copies based on search and filters
+  const filteredCopies = copies.filter(copy => {
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesText = copy.copy_text.toLowerCase().includes(query);
+      const matchesPlatform = copy.platform.toLowerCase().includes(query);
+      const matchesType = copy.content_type.toLowerCase().includes(query);
+      if (!matchesText && !matchesPlatform && !matchesType) return false;
+    }
+    // Platform filter
+    if (filterPlatform !== 'all' && copy.platform !== filterPlatform) return false;
+    // Content type filter
+    if (filterContentType !== 'all' && copy.content_type !== filterContentType) return false;
+    return true;
+  });
 
   // Fetch copies when brand changes
   useEffect(() => {
@@ -693,6 +856,13 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
       fetchCopiesWithMedia();
     }
   }, [brandId, fetchCopiesWithMedia]);
+
+  // Register refresh callback with CopywritingContext for SaveToCopyLibrary
+  const { setOnCopyLibraryRefresh } = useCopywritingContext();
+  useEffect(() => {
+    setOnCopyLibraryRefresh(() => fetchCopiesWithMedia);
+    return () => setOnCopyLibraryRefresh(null);
+  }, [fetchCopiesWithMedia, setOnCopyLibraryRefresh]);
 
   // Toggle copy expansion
   const toggleCopyExpanded = (copyId: string) => {
@@ -732,6 +902,13 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
   const handleGenerateForSection = (section: CopySection) => {
     setSelectedSection(section);
     setIsSlideOverOpen(true);
+  };
+
+  // Handle export - opens the export modal
+  const handleExport = (copyId: string, title: string) => {
+    setExportCopyId(copyId);
+    setExportCopyTitle(title);
+    setIsExportModalOpen(true);
   };
 
   if (!brandId) {
@@ -783,37 +960,165 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', height: '100%' }}>
       {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '8px',
-        }}
-      >
-        <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'white', margin: 0 }}>
-          Copy Library
-        </h3>
-        <button
-          onClick={() => fetchCopiesWithMedia()}
+      <div style={{ flexShrink: 0 }}>
+        <div
           style={{
-            padding: '6px 12px',
-            fontSize: '11px',
-            color: 'rgba(255, 255, 255, 0.7)',
-            backgroundColor: 'transparent',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
-            borderRadius: '6px',
-            cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px',
+            justifyContent: 'space-between',
+            marginBottom: '12px',
           }}
         >
-          <RefreshCw size={12} />
-          Refresh
-        </button>
+          <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'white', margin: 0 }}>
+            Copy Library
+          </h3>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              style={{
+                padding: '6px',
+                color: showFilters ? '#3B82F6' : 'rgba(255, 255, 255, 0.5)',
+                backgroundColor: showFilters ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                border: showFilters ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+              }}
+              title="Toggle filters"
+            >
+              <Filter size={14} />
+            </button>
+            <button
+              onClick={() => fetchCopiesWithMedia()}
+              style={{
+                padding: '6px',
+                color: 'rgba(255, 255, 255, 0.5)',
+                backgroundColor: 'transparent',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+              }}
+              title="Refresh"
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* Search Input */}
+        <div style={{ position: 'relative', marginBottom: '10px' }}>
+          <Search
+            size={14}
+            style={{
+              position: 'absolute',
+              left: '10px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'rgba(255, 255, 255, 0.4)',
+            }}
+          />
+          <input
+            type="text"
+            placeholder="Search copy..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '8px 32px 8px 32px',
+              fontSize: '12px',
+              color: 'white',
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '8px',
+              outline: 'none',
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                padding: '2px',
+                cursor: 'pointer',
+                color: 'rgba(255, 255, 255, 0.4)',
+              }}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Filters */}
+        {showFilters && (
+          <div
+            style={{
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '10px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <select
+              value={filterPlatform}
+              onChange={(e) => setFilterPlatform(e.target.value)}
+              style={{
+                flex: 1,
+                minWidth: '100px',
+                padding: '6px 8px',
+                fontSize: '11px',
+                color: 'white',
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '6px',
+                outline: 'none',
+              }}
+            >
+              <option value="all">All Platforms</option>
+              {platforms.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            <select
+              value={filterContentType}
+              onChange={(e) => setFilterContentType(e.target.value)}
+              style={{
+                flex: 1,
+                minWidth: '100px',
+                padding: '6px 8px',
+                fontSize: '11px',
+                color: 'white',
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '6px',
+                outline: 'none',
+              }}
+            >
+              <option value="all">All Types</option>
+              {contentTypes.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Results count */}
+        {(searchQuery || filterPlatform !== 'all' || filterContentType !== 'all') && (
+          <div
+            style={{
+              fontSize: '11px',
+              color: 'rgba(255, 255, 255, 0.5)',
+              marginBottom: '8px',
+            }}
+          >
+            {filteredCopies.length} of {copies.length} items
+          </div>
+        )}
       </div>
 
       {/* Copies list */}
@@ -834,7 +1139,7 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
           </p>
         </div>
       ) : (
-        copies.map((copy) => (
+        filteredCopies.map((copy) => (
           <CopyCard
             key={copy.id}
             copy={copy}
@@ -846,6 +1151,8 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
             onToggleSection={toggleSection}
             onSelectAllSections={() => selectAllSections(copy.id)}
             onGenerateForSection={handleGenerateForSection}
+            onCopyFormat={copyToClipboard}
+            onExport={handleExport}
             getSectionTypeLabel={getSectionTypeLabel}
             getSectionTypeColor={getSectionTypeColor}
           />
@@ -881,6 +1188,21 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
           onGenerationComplete={() => {
             fetchCopiesWithMedia();
           }}
+        />
+      )}
+
+      {/* Copy Export Modal */}
+      {exportCopyId && (
+        <CopyExportModal
+          isOpen={isExportModalOpen}
+          onClose={() => {
+            setIsExportModalOpen(false);
+            setExportCopyId(null);
+            setExportCopyTitle('');
+          }}
+          copyId={exportCopyId}
+          copyTitle={exportCopyTitle}
+          getFormattedCopy={getFormattedCopy}
         />
       )}
     </div>
