@@ -1328,6 +1328,376 @@ export async function handleCopywritingRoutes(
     }
   }
 
+  // ============================================================================
+  // POST TYPE TEMPLATES ENDPOINTS
+  // ============================================================================
+
+  // GET /api/copywriting/templates - List all templates (global + optional brand-specific)
+  if (pathname === '/api/copywriting/templates' && req.method === 'GET') {
+    try {
+      const brandId = url.searchParams.get('brandId') || undefined;
+      const category = url.searchParams.get('category') as 'thought_leadership' | 'social_proof' | 'engagement' | 'educational' | undefined;
+
+      let templates;
+      if (category) {
+        templates = copywritingDb.getTemplatesByCategory(category, brandId);
+      } else {
+        templates = copywritingDb.getTemplates(brandId);
+      }
+
+      // Parse JSON fields for client
+      const parsed = templates.map(t => ({
+        ...t,
+        platforms: JSON.parse(t.platforms || '[]'),
+        structure: JSON.parse(t.structure || '{}'),
+        variables: JSON.parse(t.variables || '[]'),
+      }));
+
+      return jsonResponse({ templates: parsed });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/templates/:id - Get single template
+  const templateIdMatch = pathname.match(/^\/api\/copywriting\/templates\/([^/]+)$/);
+  if (templateIdMatch && req.method === 'GET') {
+    try {
+      const template = copywritingDb.getTemplate(templateIdMatch[1]);
+      if (!template) {
+        return jsonResponse({ error: 'Template not found' }, 404);
+      }
+
+      const parsed = {
+        ...template,
+        platforms: JSON.parse(template.platforms || '[]'),
+        structure: JSON.parse(template.structure || '{}'),
+        variables: JSON.parse(template.variables || '[]'),
+      };
+
+      return jsonResponse(parsed);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/copywriting/brands/:id/templates - Create brand-specific template
+  const createTemplateMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/templates$/
+  );
+  if (createTemplateMatch && req.method === 'POST') {
+    try {
+      const brandId = createTemplateMatch[1];
+      const body = (await req.json()) as {
+        name: string;
+        category: 'thought_leadership' | 'social_proof' | 'engagement' | 'educational';
+        structure: {
+          sections: Array<{
+            name: string;
+            prompt: string;
+            maxChars?: number;
+            variables?: string[];
+          }>;
+          framework?: string;
+          tone_adjustments?: Record<string, number | string>;
+        };
+        description?: string;
+        platforms?: string[];
+        exampleOutput?: string;
+        variables?: string[];
+      };
+
+      if (!body.name || !body.category || !body.structure) {
+        return jsonResponse(
+          { error: 'name, category, and structure are required' },
+          400
+        );
+      }
+
+      const template = copywritingDb.createTemplate(
+        brandId,
+        body.name,
+        body.category,
+        body.structure,
+        {
+          description: body.description,
+          platforms: body.platforms,
+          exampleOutput: body.exampleOutput,
+          variables: body.variables,
+        }
+      );
+
+      // Parse JSON fields for response
+      const parsed = {
+        ...template,
+        platforms: JSON.parse(template.platforms || '[]'),
+        structure: JSON.parse(template.structure || '{}'),
+        variables: JSON.parse(template.variables || '[]'),
+      };
+
+      return jsonResponse(parsed, 201);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // PUT /api/copywriting/templates/:id - Update template
+  if (templateIdMatch && req.method === 'PUT') {
+    try {
+      const body = (await req.json()) as {
+        name?: string;
+        description?: string;
+        category?: 'thought_leadership' | 'social_proof' | 'engagement' | 'educational';
+        platforms?: string[];
+        structure?: {
+          sections: Array<{
+            name: string;
+            prompt: string;
+            maxChars?: number;
+            variables?: string[];
+          }>;
+          framework?: string;
+          tone_adjustments?: Record<string, number | string>;
+        };
+        exampleOutput?: string;
+        variables?: string[];
+      };
+
+      const success = copywritingDb.updateTemplate(templateIdMatch[1], body);
+
+      if (!success) {
+        return jsonResponse({ error: 'Template not found or is a system template' }, 404);
+      }
+
+      const template = copywritingDb.getTemplate(templateIdMatch[1]);
+      if (!template) {
+        return jsonResponse({ error: 'Template not found' }, 404);
+      }
+
+      const parsed = {
+        ...template,
+        platforms: JSON.parse(template.platforms || '[]'),
+        structure: JSON.parse(template.structure || '{}'),
+        variables: JSON.parse(template.variables || '[]'),
+      };
+
+      return jsonResponse(parsed);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // DELETE /api/copywriting/templates/:id - Delete template
+  if (templateIdMatch && req.method === 'DELETE') {
+    try {
+      const success = copywritingDb.deleteTemplate(templateIdMatch[1]);
+      if (!success) {
+        return jsonResponse({ error: 'Template not found or is a system template' }, 404);
+      }
+      return jsonResponse({ success: true });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // ============================================================================
+  // BRAND TONE PRESETS ENDPOINTS
+  // ============================================================================
+
+  // GET /api/copywriting/brands/:id/tone-presets - List tone presets for brand
+  const tonePresetsMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/tone-presets$/
+  );
+  if (tonePresetsMatch && req.method === 'GET') {
+    try {
+      const presets = copywritingDb.getTonePresets(tonePresetsMatch[1]);
+
+      // Parse JSON fields for client
+      const parsed = presets.map(p => ({
+        ...p,
+        tone_adjustments: JSON.parse(p.tone_adjustments || '{}'),
+        use_cases: JSON.parse(p.use_cases || '[]'),
+        example_phrases: JSON.parse(p.example_phrases || '[]'),
+      }));
+
+      return jsonResponse({ presets: parsed });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/copywriting/brands/:id/tone-presets - Create tone preset
+  if (tonePresetsMatch && req.method === 'POST') {
+    try {
+      const brandId = tonePresetsMatch[1];
+      const body = (await req.json()) as {
+        name: string;
+        toneAdjustments: {
+          formality?: number | string;
+          authority?: number | string;
+          warmth?: number | string;
+          humor?: number | string;
+          energy?: number | string;
+          avoidPhrases?: string[];
+          preferPhrases?: string[];
+        };
+        description?: string;
+        useCases?: string[];
+        examplePhrases?: string[];
+        isDefault?: boolean;
+      };
+
+      if (!body.name || !body.toneAdjustments) {
+        return jsonResponse(
+          { error: 'name and toneAdjustments are required' },
+          400
+        );
+      }
+
+      const preset = copywritingDb.createTonePreset(
+        brandId,
+        body.name,
+        body.toneAdjustments,
+        {
+          description: body.description,
+          useCases: body.useCases,
+          examplePhrases: body.examplePhrases,
+          isDefault: body.isDefault,
+        }
+      );
+
+      // Parse JSON fields for response
+      const parsed = {
+        ...preset,
+        tone_adjustments: JSON.parse(preset.tone_adjustments || '{}'),
+        use_cases: JSON.parse(preset.use_cases || '[]'),
+        example_phrases: JSON.parse(preset.example_phrases || '[]'),
+      };
+
+      return jsonResponse(parsed, 201);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/copywriting/brands/:id/tone-presets/auto-generate - Auto-generate defaults
+  const autoGeneratePresetsMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/tone-presets\/auto-generate$/
+  );
+  if (autoGeneratePresetsMatch && req.method === 'POST') {
+    try {
+      const brandId = autoGeneratePresetsMatch[1];
+
+      // Check if brand exists
+      const brand = copywritingDb.getBrandConfig(brandId);
+      if (!brand) {
+        return jsonResponse({ error: 'Brand not found' }, 404);
+      }
+
+      // Check if presets already exist
+      const existing = copywritingDb.getTonePresets(brandId);
+      if (existing.length > 0) {
+        return jsonResponse(
+          { error: 'Brand already has tone presets. Delete them first to regenerate.' },
+          400
+        );
+      }
+
+      const presets = copywritingDb.createDefaultTonePresets(brandId);
+
+      // Parse JSON fields for response
+      const parsed = presets.map(p => ({
+        ...p,
+        tone_adjustments: JSON.parse(p.tone_adjustments || '{}'),
+        use_cases: JSON.parse(p.use_cases || '[]'),
+        example_phrases: JSON.parse(p.example_phrases || '[]'),
+      }));
+
+      return jsonResponse({ presets: parsed, count: presets.length }, 201);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/tone-presets/:id - Get single tone preset
+  const tonePresetIdMatch = pathname.match(/^\/api\/copywriting\/tone-presets\/([^/]+)$/);
+  if (tonePresetIdMatch && req.method === 'GET') {
+    try {
+      const preset = copywritingDb.getTonePreset(tonePresetIdMatch[1]);
+      if (!preset) {
+        return jsonResponse({ error: 'Tone preset not found' }, 404);
+      }
+
+      const parsed = {
+        ...preset,
+        tone_adjustments: JSON.parse(preset.tone_adjustments || '{}'),
+        use_cases: JSON.parse(preset.use_cases || '[]'),
+        example_phrases: JSON.parse(preset.example_phrases || '[]'),
+      };
+
+      return jsonResponse(parsed);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // PUT /api/copywriting/tone-presets/:id - Update tone preset
+  if (tonePresetIdMatch && req.method === 'PUT') {
+    try {
+      const body = (await req.json()) as {
+        name?: string;
+        description?: string;
+        toneAdjustments?: {
+          formality?: number | string;
+          authority?: number | string;
+          warmth?: number | string;
+          humor?: number | string;
+          energy?: number | string;
+          avoidPhrases?: string[];
+          preferPhrases?: string[];
+        };
+        useCases?: string[];
+        examplePhrases?: string[];
+        isDefault?: boolean;
+      };
+
+      const success = copywritingDb.updateTonePreset(tonePresetIdMatch[1], body);
+
+      if (!success) {
+        return jsonResponse({ error: 'Tone preset not found' }, 404);
+      }
+
+      const preset = copywritingDb.getTonePreset(tonePresetIdMatch[1]);
+      if (!preset) {
+        return jsonResponse({ error: 'Tone preset not found' }, 404);
+      }
+
+      const parsed = {
+        ...preset,
+        tone_adjustments: JSON.parse(preset.tone_adjustments || '{}'),
+        use_cases: JSON.parse(preset.use_cases || '[]'),
+        example_phrases: JSON.parse(preset.example_phrases || '[]'),
+      };
+
+      return jsonResponse(parsed);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // DELETE /api/copywriting/tone-presets/:id - Delete tone preset
+  if (tonePresetIdMatch && req.method === 'DELETE') {
+    try {
+      const success = copywritingDb.deleteTonePreset(tonePresetIdMatch[1]);
+      if (!success) {
+        return jsonResponse({ error: 'Tone preset not found' }, 404);
+      }
+      return jsonResponse({ success: true });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
   // Route not handled
   return undefined;
 }

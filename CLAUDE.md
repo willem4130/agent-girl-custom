@@ -29,9 +29,10 @@ agent-girl-custom/
 │   │   ├── general/              # General mode commands
 │   │   └── shared/               # Cross-mode commands
 │   ├── copywriting/              # Copywriting module
-│   │   ├── database.ts           # Brand/voice/copy database
+│   │   ├── database.ts           # Brand/voice/copy/templates database
 │   │   ├── copy-formatter.ts     # Multi-format export (WP, LinkedIn, MD)
 │   │   ├── section-analyzer.ts   # LLM-based copy section analysis
+│   │   ├── reference-context.ts  # Reference material injection
 │   │   └── strategies/           # Content strategies per platform
 │   ├── media-generation/         # Media generation module
 │   │   ├── providers/            # Image providers (Nano Banana, Seedream)
@@ -51,6 +52,8 @@ agent-girl-custom/
 │   ├── components/
 │   │   ├── chat/                 # Chat interface
 │   │   ├── copywriting/          # Brand management, copy library
+│   │   │   ├── PostTypeSelector.tsx   # Template selection grid
+│   │   │   ├── TonePresetSelector.tsx # Tone preset pills
 │   │   │   └── media/            # Copy-to-media generation
 │   │   ├── media/                # Media mode
 │   │   │   ├── workflow/         # React Flow node editor
@@ -103,11 +106,14 @@ agent-girl-custom/
 ### Copywriting Database
 - `brands` - Brand configurations
 - `brand_voice_profiles` - Tone and language patterns
+- `brand_voice_analysis` - LLM-generated voice analysis
+- `brand_reference_materials` - Reference docs for prompt injection
+- `post_type_templates` - Content structure templates (8 defaults)
+- `brand_tone_presets` - Context-specific tone variations
 - `scraped_content` - Platform-specific content
 - `generated_copy` - Copy variations with metadata
-- `copy_sections` - Copy section breakdowns (headline, body, CTA)
+- `copy_sections` - Copy section breakdowns
 - `generated_images` - Image generation records
-- `section_images` - Links between sections and images
 - `engagement_metrics` - Performance tracking
 
 ## Organization Rules
@@ -155,8 +161,10 @@ Read server output and fix ALL warnings/errors.
 - `POST /api/copywriting/brands` - Create brand
 - `GET /api/copywriting/copy` - List generated copy
 - `POST /api/copywriting/copy/save-from-chat` - Save chat content to library
-- `POST /api/copywriting/copy/analyze-sections` - Analyze copy sections
-- `POST /api/copywriting/images/batch` - Batch generate images for sections
+- `GET /api/copywriting/templates` - List content templates
+- `POST /api/copywriting/brands/:id/templates` - Create brand template
+- `GET /api/copywriting/brands/:id/tone-presets` - List tone presets
+- `POST /api/copywriting/brands/:id/tone-presets/auto-generate` - Generate defaults
 
 ### Workflows
 - `GET /api/workflows` - List workflows

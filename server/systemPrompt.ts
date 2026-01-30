@@ -22,6 +22,7 @@ import type { ProviderType } from '../client/config/models';
 import type { AgentDefinition } from './agents';
 import type { UserConfig } from './userConfig';
 import { getUserDisplayName } from './userConfig';
+import { buildReferenceContext, formatReferencesForPrompt } from './copywriting/reference-context';
 
 /**
  * Format current date and time for the given timezone (compact version)
@@ -158,6 +159,11 @@ export interface CopywritingContext {
     label: string;
     icon?: string;
   }>;
+  // New fields for enhanced copywriting mode
+  templateId?: string;
+  tonePresetId?: string;
+  includeReferences?: boolean; // default: true
+  referenceTags?: string[]; // filter references by specific tags
 }
 
 /**
@@ -221,6 +227,16 @@ BRAND VOICE ENDPOINTS (fetch these before generating content):
    → Tone dimensions (formality, humor, energy, authority scores)
 
 Use endpoint #1 for quick context, #2 for detailed guidelines when crafting content.`;
+
+      // Inject reference materials (enabled by default)
+      if (copywritingContext.includeReferences !== false) {
+        const refContext = buildReferenceContext(copywritingContext.brandId, {
+          tags: copywritingContext.referenceTags,
+        });
+        if (refContext.content) {
+          prompt += formatReferencesForPrompt(refContext);
+        }
+      }
     }
 
     if (copywritingContext.contentTypes && copywritingContext.contentTypes.length > 0) {

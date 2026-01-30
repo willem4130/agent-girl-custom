@@ -18,6 +18,13 @@ interface CopywritingContextValue {
   refreshCopyLibrary: () => void;
   onCopyLibraryRefresh: (() => void) | null;
   setOnCopyLibraryRefresh: (callback: (() => void) | null) => void;
+  // New fields for enhanced copywriting mode
+  templateId: string | null;
+  setTemplateId: (id: string | null) => void;
+  tonePresetId: string | null;
+  setTonePresetId: (id: string | null) => void;
+  selectedReferenceTags: string[];
+  setSelectedReferenceTags: (tags: string[]) => void;
 }
 
 const CopywritingContext = createContext<CopywritingContextValue | null>(null);
@@ -27,6 +34,10 @@ export function CopywritingProvider({ children }: { children: ReactNode }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [mode, setMode] = useState<string | null>(null);
   const [onCopyLibraryRefresh, setOnCopyLibraryRefresh] = useState<(() => void) | null>(null);
+  // New state for enhanced copywriting mode
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [tonePresetId, setTonePresetId] = useState<string | null>(null);
+  const [selectedReferenceTags, setSelectedReferenceTags] = useState<string[]>([]);
 
   const isCopywritingMode = mode === 'copywriting';
 
@@ -49,6 +60,12 @@ export function CopywritingProvider({ children }: { children: ReactNode }) {
         refreshCopyLibrary,
         onCopyLibraryRefresh,
         setOnCopyLibraryRefresh,
+        templateId,
+        setTemplateId,
+        tonePresetId,
+        setTonePresetId,
+        selectedReferenceTags,
+        setSelectedReferenceTags,
       }}
     >
       {children}
@@ -71,6 +88,12 @@ export function useCopywritingContext() {
       refreshCopyLibrary: () => {},
       onCopyLibraryRefresh: null,
       setOnCopyLibraryRefresh: () => {},
+      templateId: null,
+      setTemplateId: () => {},
+      tonePresetId: null,
+      setTonePresetId: () => {},
+      selectedReferenceTags: [],
+      setSelectedReferenceTags: () => {},
     };
   }
   return context;

@@ -185,6 +185,61 @@ export interface BrandReferenceMaterial {
 export type ContentType = 'linkedin_post' | 'facebook_post' | 'instagram_post' | 'article' | 'newsletter' | 'custom';
 export type WorkflowStep = 'brand_select' | 'content_type' | 'briefing' | 'clarification' | 'generation' | 'refinement' | 'completed';
 
+// ============================================================================
+// POST TYPE TEMPLATES AND TONE PRESETS INTERFACES
+// ============================================================================
+
+export type TemplateCategory = 'thought_leadership' | 'social_proof' | 'engagement' | 'educational';
+
+export interface PostTypeTemplate {
+  id: string;
+  brand_id: string | null; // NULL = global template available to all brands
+  name: string;
+  description?: string;
+  category: TemplateCategory;
+  platforms: string; // JSON array of platform names
+  structure: string; // JSON: sections with prompts
+  example_output?: string;
+  variables: string; // JSON array of required input variables
+  is_system: number; // 1 = system/global template, 0 = user-created
+  created_at: string;
+}
+
+export interface TemplateSection {
+  name: string;
+  prompt: string;
+  maxChars?: number;
+  variables?: string[];
+}
+
+export interface TemplateStructure {
+  sections: TemplateSection[];
+  framework?: string;
+  tone_adjustments?: Record<string, number | string>;
+}
+
+export interface BrandTonePreset {
+  id: string;
+  brand_id: string;
+  name: string;
+  description?: string;
+  tone_adjustments: string; // JSON
+  use_cases: string; // JSON array
+  example_phrases: string; // JSON array
+  is_default: number; // 0 or 1
+  created_at: string;
+}
+
+export interface ToneAdjustments {
+  formality?: number | string;
+  authority?: number | string;
+  warmth?: number | string;
+  humor?: number | string;
+  energy?: number | string;
+  avoidPhrases?: string[];
+  preferPhrases?: string[];
+}
+
 export interface ContentGenerationSession {
   id: string;
   brand_id: string;
@@ -857,7 +912,252 @@ class CopywritingDatabase {
       ON copy_sections(copy_id)
     `);
 
+    // ========================================================================
+    // POST TYPE TEMPLATES TABLE
+    // ========================================================================
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS post_type_templates (
+        id TEXT PRIMARY KEY,
+        brand_id TEXT,
+        name TEXT NOT NULL,
+        description TEXT,
+        category TEXT NOT NULL,
+        platforms TEXT DEFAULT '[]',
+        structure TEXT NOT NULL,
+        example_output TEXT,
+        variables TEXT DEFAULT '[]',
+        is_system INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (brand_id) REFERENCES brand_configs(id) ON DELETE CASCADE
+      )
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_templates_brand
+      ON post_type_templates(brand_id)
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_templates_category
+      ON post_type_templates(category)
+    `);
+
+    // Seed default templates if none exist
+    this.seedDefaultTemplates();
+
+    // ========================================================================
+    // BRAND TONE PRESETS TABLE
+    // ========================================================================
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS brand_tone_presets (
+        id TEXT PRIMARY KEY,
+        brand_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        tone_adjustments TEXT NOT NULL,
+        use_cases TEXT DEFAULT '[]',
+        example_phrases TEXT DEFAULT '[]',
+        is_default INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (brand_id) REFERENCES brand_configs(id) ON DELETE CASCADE
+      )
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_tone_presets_brand
+      ON brand_tone_presets(brand_id)
+    `);
+
     console.log('✅ Copywriting database initialized');
+  }
+
+  /**
+   * Seed default global templates
+   */
+  private seedDefaultTemplates() {
+    const existingCount = this.db
+      .query<{ count: number }, []>('SELECT COUNT(*) as count FROM post_type_templates WHERE is_system = 1')
+      .get()?.count || 0;
+
+    if (existingCount > 0) return; // Already seeded
+
+    const defaultTemplates: Array<{
+      name: string;
+      description: string;
+      category: TemplateCategory;
+      platforms: string[];
+      structure: TemplateStructure;
+      variables: string[];
+    }> = [
+      {
+        name: 'Case Study',
+        description: 'Client success story showcasing transformation and results',
+        category: 'social_proof',
+        platforms: ['linkedin', 'article'],
+        structure: {
+          sections: [
+            { name: 'hook', prompt: 'Start with the transformation or surprising result', maxChars: 150 },
+            { name: 'challenge', prompt: 'Describe the initial problem or situation', variables: ['client_name'] },
+            { name: 'solution', prompt: 'Explain the approach or solution implemented' },
+            { name: 'results', prompt: 'Share specific metrics and outcomes', variables: ['metric_1', 'metric_2'] },
+            { name: 'cta', prompt: 'End with a question or call-to-action' },
+          ],
+          framework: 'BAB',
+          tone_adjustments: { authority: '+15' },
+        },
+        variables: ['client_name', 'metric_1', 'metric_2'],
+      },
+      {
+        name: 'Client Testimonial',
+        description: 'Quote-based social proof with context and outcome',
+        category: 'social_proof',
+        platforms: ['linkedin', 'instagram', 'facebook'],
+        structure: {
+          sections: [
+            { name: 'setup', prompt: 'Brief context about the client/situation', maxChars: 100 },
+            { name: 'quote', prompt: 'The testimonial quote in their voice', variables: ['client_quote'] },
+            { name: 'context', prompt: 'Background on what was achieved' },
+            { name: 'takeaway', prompt: 'What others can learn from this' },
+          ],
+          framework: 'Quote-Context-CTA',
+          tone_adjustments: { warmth: '+10', authority: '+5' },
+        },
+        variables: ['client_quote', 'client_name'],
+      },
+      {
+        name: 'Product Announcement',
+        description: 'New feature or product launch announcement',
+        category: 'thought_leadership',
+        platforms: ['linkedin', 'twitter', 'newsletter'],
+        structure: {
+          sections: [
+            { name: 'headline', prompt: 'Attention-grabbing announcement', maxChars: 80 },
+            { name: 'problem', prompt: 'The problem this solves' },
+            { name: 'solution', prompt: 'What we built/launched', variables: ['product_name'] },
+            { name: 'benefits', prompt: 'Key benefits (2-3 bullet points)' },
+            { name: 'availability', prompt: 'How/when to get it', variables: ['launch_date'] },
+          ],
+          framework: 'PAS',
+          tone_adjustments: { energy: '+15', authority: '+10' },
+        },
+        variables: ['product_name', 'launch_date'],
+      },
+      {
+        name: 'Behind-the-Scenes',
+        description: 'Team or process content that humanizes the brand',
+        category: 'engagement',
+        platforms: ['instagram', 'linkedin', 'facebook'],
+        structure: {
+          sections: [
+            { name: 'hook', prompt: 'Curiosity-inducing opener', maxChars: 100 },
+            { name: 'reveal', prompt: 'What you are showing/sharing' },
+            { name: 'story', prompt: 'The human story behind it' },
+            { name: 'engagement', prompt: 'Question to invite interaction' },
+          ],
+          framework: 'Story-Engagement',
+          tone_adjustments: { warmth: '+20', formality: '-15' },
+        },
+        variables: [],
+      },
+      {
+        name: 'Educational Thread',
+        description: 'Multi-post teaching content (thread format)',
+        category: 'educational',
+        platforms: ['twitter', 'linkedin'],
+        structure: {
+          sections: [
+            { name: 'hook', prompt: 'Promise of value to hook readers', maxChars: 150 },
+            { name: 'point_1', prompt: 'First key insight or lesson' },
+            { name: 'point_2', prompt: 'Second key insight' },
+            { name: 'point_3', prompt: 'Third key insight' },
+            { name: 'summary', prompt: 'TL;DR recap' },
+            { name: 'cta', prompt: 'Follow/share CTA' },
+          ],
+          framework: 'Thread',
+          tone_adjustments: { authority: '+10' },
+        },
+        variables: ['topic'],
+      },
+      {
+        name: 'Industry Commentary',
+        description: 'News or trend analysis with expert opinion',
+        category: 'thought_leadership',
+        platforms: ['linkedin', 'twitter'],
+        structure: {
+          sections: [
+            { name: 'news', prompt: 'Reference the news/trend', variables: ['news_item'] },
+            { name: 'take', prompt: 'Your unique perspective on it' },
+            { name: 'implications', prompt: 'What it means for the industry/audience' },
+            { name: 'prediction', prompt: 'What happens next' },
+            { name: 'question', prompt: 'Invite discussion' },
+          ],
+          framework: 'Commentary',
+          tone_adjustments: { authority: '+20', formality: '+10' },
+        },
+        variables: ['news_item'],
+      },
+      {
+        name: 'Myth Busting',
+        description: 'Debunk common misconceptions in your field',
+        category: 'educational',
+        platforms: ['linkedin', 'instagram', 'article'],
+        structure: {
+          sections: [
+            { name: 'myth', prompt: 'State the common myth/misconception', variables: ['myth'] },
+            { name: 'why_believed', prompt: 'Why people believe it' },
+            { name: 'truth', prompt: 'The actual reality with evidence' },
+            { name: 'action', prompt: 'What to do instead' },
+          ],
+          framework: 'Myth-Truth',
+          tone_adjustments: { authority: '+15', energy: '+10' },
+        },
+        variables: ['myth'],
+      },
+      {
+        name: 'Team Spotlight',
+        description: 'Feature a team member to humanize the brand',
+        category: 'engagement',
+        platforms: ['linkedin', 'instagram', 'facebook'],
+        structure: {
+          sections: [
+            { name: 'intro', prompt: 'Introduce the team member', variables: ['name', 'role'] },
+            { name: 'journey', prompt: 'Their background or journey' },
+            { name: 'contribution', prompt: 'What they bring to the team' },
+            { name: 'fun_fact', prompt: 'Something personal/fun about them' },
+            { name: 'welcome', prompt: 'Welcome message or engagement prompt' },
+          ],
+          framework: 'Spotlight',
+          tone_adjustments: { warmth: '+25', formality: '-10' },
+        },
+        variables: ['name', 'role'],
+      },
+    ];
+
+    const now = new Date().toISOString();
+    for (const template of defaultTemplates) {
+      const id = randomUUID();
+      this.db.run(
+        `INSERT INTO post_type_templates
+          (id, brand_id, name, description, category, platforms, structure, variables, is_system, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          null, // Global template
+          template.name,
+          template.description,
+          template.category,
+          JSON.stringify(template.platforms),
+          JSON.stringify(template.structure),
+          JSON.stringify(template.variables),
+          1, // is_system = true
+          now,
+        ]
+      );
+    }
+
+    console.log(`✅ Seeded ${defaultTemplates.length} default templates`);
   }
 
   // ============================================================================
@@ -2744,6 +3044,407 @@ class CopywritingDatabase {
   getContentTimeline(brandId: string, limit = 50, offset = 0): UnifiedContentItem[] {
     const allContent = this.getContentByBrandWithLinks(brandId);
     return allContent.slice(offset, offset + limit);
+  }
+
+  // ============================================================================
+  // POST TYPE TEMPLATES OPERATIONS
+  // ============================================================================
+
+  /**
+   * Get all templates (global + brand-specific)
+   */
+  getTemplates(brandId?: string): PostTypeTemplate[] {
+    if (brandId) {
+      // Get global templates (brand_id IS NULL) + brand-specific templates
+      return this.db
+        .query<PostTypeTemplate, [string]>(
+          `SELECT * FROM post_type_templates
+           WHERE brand_id IS NULL OR brand_id = ?
+           ORDER BY is_system DESC, name ASC`
+        )
+        .all(brandId);
+    }
+    // Get only global templates
+    return this.db
+      .query<PostTypeTemplate, []>(
+        'SELECT * FROM post_type_templates WHERE brand_id IS NULL ORDER BY name ASC'
+      )
+      .all();
+  }
+
+  /**
+   * Get templates by category
+   */
+  getTemplatesByCategory(category: TemplateCategory, brandId?: string): PostTypeTemplate[] {
+    if (brandId) {
+      return this.db
+        .query<PostTypeTemplate, [string, string]>(
+          `SELECT * FROM post_type_templates
+           WHERE category = ? AND (brand_id IS NULL OR brand_id = ?)
+           ORDER BY is_system DESC, name ASC`
+        )
+        .all(category, brandId);
+    }
+    return this.db
+      .query<PostTypeTemplate, [string]>(
+        'SELECT * FROM post_type_templates WHERE category = ? AND brand_id IS NULL ORDER BY name ASC'
+      )
+      .all(category);
+  }
+
+  /**
+   * Get a single template by ID
+   */
+  getTemplate(templateId: string): PostTypeTemplate | null {
+    return this.db
+      .query<PostTypeTemplate, [string]>('SELECT * FROM post_type_templates WHERE id = ?')
+      .get(templateId) || null;
+  }
+
+  /**
+   * Create a brand-specific template
+   */
+  createTemplate(
+    brandId: string,
+    name: string,
+    category: TemplateCategory,
+    structure: TemplateStructure,
+    options: {
+      description?: string;
+      platforms?: string[];
+      exampleOutput?: string;
+      variables?: string[];
+    } = {}
+  ): PostTypeTemplate {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    this.db.run(
+      `INSERT INTO post_type_templates
+        (id, brand_id, name, description, category, platforms, structure, example_output, variables, is_system, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        brandId,
+        name,
+        options.description || null,
+        category,
+        JSON.stringify(options.platforms || []),
+        JSON.stringify(structure),
+        options.exampleOutput || null,
+        JSON.stringify(options.variables || []),
+        0, // Not a system template
+        now,
+      ]
+    );
+
+    return {
+      id,
+      brand_id: brandId,
+      name,
+      description: options.description,
+      category,
+      platforms: JSON.stringify(options.platforms || []),
+      structure: JSON.stringify(structure),
+      example_output: options.exampleOutput,
+      variables: JSON.stringify(options.variables || []),
+      is_system: 0,
+      created_at: now,
+    };
+  }
+
+  /**
+   * Update a template (only non-system templates can be updated)
+   */
+  updateTemplate(
+    templateId: string,
+    updates: {
+      name?: string;
+      description?: string;
+      category?: TemplateCategory;
+      platforms?: string[];
+      structure?: TemplateStructure;
+      exampleOutput?: string;
+      variables?: string[];
+    }
+  ): boolean {
+    const template = this.getTemplate(templateId);
+    if (!template || template.is_system === 1) {
+      return false; // Can't update system templates
+    }
+
+    const fields: string[] = [];
+    const values: (string | null)[] = [];
+
+    if (updates.name !== undefined) {
+      fields.push('name = ?');
+      values.push(updates.name);
+    }
+    if (updates.description !== undefined) {
+      fields.push('description = ?');
+      values.push(updates.description);
+    }
+    if (updates.category !== undefined) {
+      fields.push('category = ?');
+      values.push(updates.category);
+    }
+    if (updates.platforms !== undefined) {
+      fields.push('platforms = ?');
+      values.push(JSON.stringify(updates.platforms));
+    }
+    if (updates.structure !== undefined) {
+      fields.push('structure = ?');
+      values.push(JSON.stringify(updates.structure));
+    }
+    if (updates.exampleOutput !== undefined) {
+      fields.push('example_output = ?');
+      values.push(updates.exampleOutput);
+    }
+    if (updates.variables !== undefined) {
+      fields.push('variables = ?');
+      values.push(JSON.stringify(updates.variables));
+    }
+
+    if (fields.length === 0) return false;
+
+    values.push(templateId);
+    const result = this.db.run(
+      `UPDATE post_type_templates SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    return result.changes > 0;
+  }
+
+  /**
+   * Delete a template (only non-system templates can be deleted)
+   */
+  deleteTemplate(templateId: string): boolean {
+    const template = this.getTemplate(templateId);
+    if (!template || template.is_system === 1) {
+      return false; // Can't delete system templates
+    }
+
+    const result = this.db.run('DELETE FROM post_type_templates WHERE id = ?', [templateId]);
+    return result.changes > 0;
+  }
+
+  // ============================================================================
+  // BRAND TONE PRESETS OPERATIONS
+  // ============================================================================
+
+  /**
+   * Get all tone presets for a brand
+   */
+  getTonePresets(brandId: string): BrandTonePreset[] {
+    return this.db
+      .query<BrandTonePreset, [string]>(
+        'SELECT * FROM brand_tone_presets WHERE brand_id = ? ORDER BY is_default DESC, name ASC'
+      )
+      .all(brandId);
+  }
+
+  /**
+   * Get a single tone preset by ID
+   */
+  getTonePreset(presetId: string): BrandTonePreset | null {
+    return this.db
+      .query<BrandTonePreset, [string]>('SELECT * FROM brand_tone_presets WHERE id = ?')
+      .get(presetId) || null;
+  }
+
+  /**
+   * Get the default tone preset for a brand
+   */
+  getDefaultTonePreset(brandId: string): BrandTonePreset | null {
+    return this.db
+      .query<BrandTonePreset, [string]>(
+        'SELECT * FROM brand_tone_presets WHERE brand_id = ? AND is_default = 1 LIMIT 1'
+      )
+      .get(brandId) || null;
+  }
+
+  /**
+   * Create a tone preset for a brand
+   */
+  createTonePreset(
+    brandId: string,
+    name: string,
+    toneAdjustments: ToneAdjustments,
+    options: {
+      description?: string;
+      useCases?: string[];
+      examplePhrases?: string[];
+      isDefault?: boolean;
+    } = {}
+  ): BrandTonePreset {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    // If this preset is default, unset any existing default
+    if (options.isDefault) {
+      this.db.run(
+        'UPDATE brand_tone_presets SET is_default = 0 WHERE brand_id = ?',
+        [brandId]
+      );
+    }
+
+    this.db.run(
+      `INSERT INTO brand_tone_presets
+        (id, brand_id, name, description, tone_adjustments, use_cases, example_phrases, is_default, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        brandId,
+        name,
+        options.description || null,
+        JSON.stringify(toneAdjustments),
+        JSON.stringify(options.useCases || []),
+        JSON.stringify(options.examplePhrases || []),
+        options.isDefault ? 1 : 0,
+        now,
+      ]
+    );
+
+    return {
+      id,
+      brand_id: brandId,
+      name,
+      description: options.description,
+      tone_adjustments: JSON.stringify(toneAdjustments),
+      use_cases: JSON.stringify(options.useCases || []),
+      example_phrases: JSON.stringify(options.examplePhrases || []),
+      is_default: options.isDefault ? 1 : 0,
+      created_at: now,
+    };
+  }
+
+  /**
+   * Update a tone preset
+   */
+  updateTonePreset(
+    presetId: string,
+    updates: {
+      name?: string;
+      description?: string;
+      toneAdjustments?: ToneAdjustments;
+      useCases?: string[];
+      examplePhrases?: string[];
+      isDefault?: boolean;
+    }
+  ): boolean {
+    const preset = this.getTonePreset(presetId);
+    if (!preset) return false;
+
+    // If setting as default, unset existing defaults for this brand
+    if (updates.isDefault) {
+      this.db.run(
+        'UPDATE brand_tone_presets SET is_default = 0 WHERE brand_id = ?',
+        [preset.brand_id]
+      );
+    }
+
+    const fields: string[] = [];
+    const values: (string | number | null)[] = [];
+
+    if (updates.name !== undefined) {
+      fields.push('name = ?');
+      values.push(updates.name);
+    }
+    if (updates.description !== undefined) {
+      fields.push('description = ?');
+      values.push(updates.description);
+    }
+    if (updates.toneAdjustments !== undefined) {
+      fields.push('tone_adjustments = ?');
+      values.push(JSON.stringify(updates.toneAdjustments));
+    }
+    if (updates.useCases !== undefined) {
+      fields.push('use_cases = ?');
+      values.push(JSON.stringify(updates.useCases));
+    }
+    if (updates.examplePhrases !== undefined) {
+      fields.push('example_phrases = ?');
+      values.push(JSON.stringify(updates.examplePhrases));
+    }
+    if (updates.isDefault !== undefined) {
+      fields.push('is_default = ?');
+      values.push(updates.isDefault ? 1 : 0);
+    }
+
+    if (fields.length === 0) return false;
+
+    values.push(presetId);
+    const result = this.db.run(
+      `UPDATE brand_tone_presets SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    return result.changes > 0;
+  }
+
+  /**
+   * Delete a tone preset
+   */
+  deleteTonePreset(presetId: string): boolean {
+    const result = this.db.run('DELETE FROM brand_tone_presets WHERE id = ?', [presetId]);
+    return result.changes > 0;
+  }
+
+  /**
+   * Auto-generate default tone presets for a brand
+   * Called after brand voice analysis completes
+   */
+  createDefaultTonePresets(brandId: string): BrandTonePreset[] {
+    const presets: Array<{
+      name: string;
+      description: string;
+      adjustments: ToneAdjustments;
+      useCases: string[];
+    }> = [
+      {
+        name: 'Formal Announcement',
+        description: 'Professional, authoritative tone for official communications',
+        adjustments: { formality: '+20', authority: '+15', humor: '-20', warmth: '-10' },
+        useCases: ['press releases', 'investor updates', 'policy announcements'],
+      },
+      {
+        name: 'Casual Update',
+        description: 'Relaxed, friendly tone for everyday content',
+        adjustments: { formality: '-15', warmth: '+15', humor: '+10', energy: '+10' },
+        useCases: ['social updates', 'team news', 'behind-the-scenes'],
+      },
+      {
+        name: 'Thought Leadership',
+        description: 'Authoritative, insightful tone for expert content',
+        adjustments: { authority: '+20', formality: '+10', energy: '+10' },
+        useCases: ['industry commentary', 'opinion pieces', 'trend analysis'],
+      },
+      {
+        name: 'Community Engagement',
+        description: 'Warm, inviting tone for building relationships',
+        adjustments: { warmth: '+20', formality: '-20', humor: '+5' },
+        useCases: ['community posts', 'user spotlights', 'thank you messages'],
+      },
+      {
+        name: 'Crisis Communication',
+        description: 'Measured, responsible tone for sensitive situations',
+        adjustments: { formality: '+25', authority: '+20', energy: '-15', humor: '-30' },
+        useCases: ['incident responses', 'apologies', 'sensitive updates'],
+      },
+    ];
+
+    const created: BrandTonePreset[] = [];
+    for (const preset of presets) {
+      const result = this.createTonePreset(brandId, preset.name, preset.adjustments, {
+        description: preset.description,
+        useCases: preset.useCases,
+        isDefault: preset.name === 'Casual Update', // Default to casual
+      });
+      created.push(result);
+    }
+
+    return created;
   }
 
   close() {

@@ -413,8 +413,16 @@ function CopyCard({
       }}
     >
       {/* Header */}
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggleExpand}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggleExpand();
+          }
+        }}
         style={{
           width: '100%',
           display: 'flex',
@@ -422,7 +430,6 @@ function CopyCard({
           justifyContent: 'space-between',
           padding: '14px 16px',
           backgroundColor: 'transparent',
-          border: 'none',
           cursor: 'pointer',
           transition: 'background-color 150ms',
         }}
@@ -535,7 +542,7 @@ function CopyCard({
             )}
           </div>
         </div>
-      </button>
+      </div>
 
       {/* Expanded content */}
       {isExpanded && (
