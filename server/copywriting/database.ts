@@ -3811,31 +3811,89 @@ class CopywritingDatabase {
       colorScheme: BrandContentFormatColorScheme;
       lengthConstraints: BrandContentFormatLengthConstraints;
       isDefault?: boolean;
+      formatRules?: BrandContentFormatRules;
+      toneAdjustments?: BrandContentFormatToneAdjustments;
+      structureHints?: BrandContentFormatStructureHints;
     }> = [
       {
         formatType: 'linkedin_post',
         customLabel: 'LinkedIn Post',
-        description: 'Professional thought leadership for LinkedIn',
+        description: 'Thought leadership content voor B2B professionals. Focus op expertise tonen, waardevolle inzichten delen, en gesprekken starten. Hook in eerste regel is cruciaal - LinkedIn kapt af na 3 regels.',
         icon: 'linkedin',
         colorScheme: { color: '#0A66C2', bgColor: 'rgba(10,102,194,0.1)', borderColor: 'rgba(10,102,194,0.3)' },
         lengthConstraints: { min: 500, max: 1500, optimal: 1000, unit: 'chars' },
+        formatRules: {
+          preferEmojis: true,
+          avoidHashtags: false,
+          customInstructions: [
+            'Start met pakkende eerste zin (hook) - dit is wat mensen zien vóór "meer weergeven"',
+            'Gebruik witregels tussen alineas voor scanbare layout',
+            'Sluit af met call-to-action of vraag om engagement',
+            'Max 3-5 relevante hashtags aan het einde',
+            'Persoonlijke verhalen en concrete voorbeelden werken goed',
+          ],
+        },
+        toneAdjustments: { formality: 0.6, authority: 0.8, warmth: 0.5 },
         isDefault: true,
       },
       {
         formatType: 'newsletter',
         customLabel: 'Nieuwsbrief',
-        description: 'Email newsletter with personal tone',
+        description: 'Persoonlijke email die voelt als bericht van een vertrouwde collega. Directe aanspreking, scanbare structuur met duidelijke koppen, en één duidelijke call-to-action per mail.',
         icon: 'mail',
         colorScheme: { color: '#F59E0B', bgColor: 'rgba(245,158,11,0.1)', borderColor: 'rgba(245,158,11,0.3)' },
         lengthConstraints: { min: 300, max: 800, optimal: 500, unit: 'words' },
+        formatRules: {
+          preferEmojis: false,
+          avoidHashtags: true,
+          customInstructions: [
+            'Persoonlijke aanspreking in onderwerpregel en intro',
+            'Duidelijke koppen om te scannen',
+            'Eén primaire CTA, optioneel secundaire links',
+            'P.S. sectie voor extra boodschap of persoonlijke noot',
+            'Vermijd te formeel taalgebruik - schrijf zoals je praat',
+          ],
+        },
+        toneAdjustments: { formality: 0.4, authority: 0.6, warmth: 0.8 },
+        structureHints: {
+          sections: [
+            { name: 'intro', prompt: 'Persoonlijke opening die context geeft' },
+            { name: 'main', prompt: 'Kernboodschap met concrete waarde' },
+            { name: 'cta', prompt: 'Duidelijke volgende stap' },
+            { name: 'ps', prompt: 'Optioneel: persoonlijke noot of bonus tip' },
+          ],
+        },
       },
       {
         formatType: 'article',
         customLabel: 'Website Artikel',
-        description: 'Long-form article for website/blog',
+        description: 'Diepgaande content voor SEO en thought leadership. Gestructureerd met H2/H3 koppen, praktische voorbeelden, en actionable takeaways. Geschikt voor blog, kennisbank of resource center.',
         icon: 'file-text',
         colorScheme: { color: '#10B981', bgColor: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.3)' },
         lengthConstraints: { min: 800, max: 2000, optimal: 1200, unit: 'words' },
+        formatRules: {
+          preferEmojis: false,
+          avoidHashtags: true,
+          customInstructions: [
+            'Start met sterke intro die het probleem/vraag adresseert',
+            'Gebruik H2 voor hoofdsecties, H3 voor subsecties',
+            'Voeg bullet points toe voor opsommingen en stappenplannen',
+            'Include concrete voorbeelden en case studies waar mogelijk',
+            'Sluit af met samenvatting of actionable takeaways',
+            'Optimaliseer voor featured snippets met directe antwoorden',
+          ],
+        },
+        toneAdjustments: { formality: 0.7, authority: 0.9, warmth: 0.4 },
+        structureHints: {
+          framework: 'problem-agitate-solve',
+          sections: [
+            { name: 'intro', prompt: 'Hook + probleemstelling + wat lezer gaat leren' },
+            { name: 'context', prompt: 'Waarom dit belangrijk is, achtergrond' },
+            { name: 'main', prompt: 'Kerninhoud met praktische uitleg' },
+            { name: 'examples', prompt: 'Concrete voorbeelden of case studies' },
+            { name: 'conclusion', prompt: 'Samenvatting en volgende stappen' },
+          ],
+        },
       },
     ];
 
@@ -3848,6 +3906,9 @@ class CopywritingDatabase {
         icon: format.icon,
         colorScheme: format.colorScheme,
         lengthConstraints: format.lengthConstraints,
+        formatRules: format.formatRules,
+        toneAdjustments: format.toneAdjustments,
+        structureHints: format.structureHints,
         isDefault: format.isDefault,
         displayOrder: i,
       });
