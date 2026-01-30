@@ -1698,6 +1698,275 @@ export async function handleCopywritingRoutes(
     }
   }
 
+  // ============================================================================
+  // BRAND CONTENT FORMATS ENDPOINTS
+  // ============================================================================
+
+  // GET /api/copywriting/brands/:id/formats - List content formats for brand
+  const formatsMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/formats$/
+  );
+  if (formatsMatch && req.method === 'GET') {
+    try {
+      const formats = copywritingDb.getBrandFormats(formatsMatch[1]);
+
+      // Parse JSON fields for client
+      const parsed = formats.map(f => ({
+        ...f,
+        color_scheme: f.color_scheme ? JSON.parse(f.color_scheme) : null,
+        length_constraints: f.length_constraints ? JSON.parse(f.length_constraints) : null,
+        structure_hints: f.structure_hints ? JSON.parse(f.structure_hints) : null,
+        format_rules: f.format_rules ? JSON.parse(f.format_rules) : null,
+        tone_adjustments: f.tone_adjustments ? JSON.parse(f.tone_adjustments) : null,
+      }));
+
+      return jsonResponse({ formats: parsed });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/copywriting/brands/:id/formats - Create content format
+  if (formatsMatch && req.method === 'POST') {
+    try {
+      const brandId = formatsMatch[1];
+      const body = (await req.json()) as {
+        formatType: string;
+        customLabel?: string;
+        description?: string;
+        icon?: string;
+        colorScheme?: { color: string; bgColor: string; borderColor: string };
+        isEnabled?: boolean;
+        isDefault?: boolean;
+        displayOrder?: number;
+        lengthConstraints?: { min?: number; max?: number; optimal?: number; unit?: 'chars' | 'words' };
+        structureHints?: { sections?: Array<{ name: string; prompt: string }>; framework?: string };
+        formatRules?: { preferEmojis?: boolean; avoidHashtags?: boolean; customInstructions?: string[] };
+        toneAdjustments?: { formality?: number; authority?: number; warmth?: number };
+      };
+
+      if (!body.formatType) {
+        return jsonResponse(
+          { error: 'formatType is required' },
+          400
+        );
+      }
+
+      const format = copywritingDb.createBrandFormat(brandId, body.formatType, {
+        customLabel: body.customLabel,
+        description: body.description,
+        icon: body.icon,
+        colorScheme: body.colorScheme,
+        isEnabled: body.isEnabled,
+        isDefault: body.isDefault,
+        displayOrder: body.displayOrder,
+        lengthConstraints: body.lengthConstraints,
+        structureHints: body.structureHints,
+        formatRules: body.formatRules,
+        toneAdjustments: body.toneAdjustments,
+      });
+
+      // Parse JSON fields for response
+      const parsed = {
+        ...format,
+        color_scheme: format.color_scheme ? JSON.parse(format.color_scheme) : null,
+        length_constraints: format.length_constraints ? JSON.parse(format.length_constraints) : null,
+        structure_hints: format.structure_hints ? JSON.parse(format.structure_hints) : null,
+        format_rules: format.format_rules ? JSON.parse(format.format_rules) : null,
+        tone_adjustments: format.tone_adjustments ? JSON.parse(format.tone_adjustments) : null,
+      };
+
+      return jsonResponse(parsed, 201);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/copywriting/brands/:id/formats/init - Initialize default formats
+  const initFormatsMatch = pathname.match(
+    /^\/api\/copywriting\/brands\/([^/]+)\/formats\/init$/
+  );
+  if (initFormatsMatch && req.method === 'POST') {
+    try {
+      const brandId = initFormatsMatch[1];
+
+      // Check if brand exists
+      const brand = copywritingDb.getBrandConfig(brandId);
+      if (!brand) {
+        return jsonResponse({ error: 'Brand not found' }, 404);
+      }
+
+      // Check if formats already exist
+      const existing = copywritingDb.getBrandFormats(brandId);
+      if (existing.length > 0) {
+        return jsonResponse(
+          { error: 'Brand already has content formats. Delete them first to reinitialize.' },
+          400
+        );
+      }
+
+      const formats = copywritingDb.initializeDefaultFormats(brandId);
+
+      // Parse JSON fields for response
+      const parsed = formats.map(f => ({
+        ...f,
+        color_scheme: f.color_scheme ? JSON.parse(f.color_scheme) : null,
+        length_constraints: f.length_constraints ? JSON.parse(f.length_constraints) : null,
+        structure_hints: f.structure_hints ? JSON.parse(f.structure_hints) : null,
+        format_rules: f.format_rules ? JSON.parse(f.format_rules) : null,
+        tone_adjustments: f.tone_adjustments ? JSON.parse(f.tone_adjustments) : null,
+      }));
+
+      return jsonResponse({ formats: parsed, count: formats.length }, 201);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/copywriting/formats/:id - Get single content format
+  const formatIdMatch = pathname.match(/^\/api\/copywriting\/formats\/([^/]+)$/);
+  if (formatIdMatch && req.method === 'GET') {
+    try {
+      const format = copywritingDb.getBrandFormat(formatIdMatch[1]);
+      if (!format) {
+        return jsonResponse({ error: 'Content format not found' }, 404);
+      }
+
+      const parsed = {
+        ...format,
+        color_scheme: format.color_scheme ? JSON.parse(format.color_scheme) : null,
+        length_constraints: format.length_constraints ? JSON.parse(format.length_constraints) : null,
+        structure_hints: format.structure_hints ? JSON.parse(format.structure_hints) : null,
+        format_rules: format.format_rules ? JSON.parse(format.format_rules) : null,
+        tone_adjustments: format.tone_adjustments ? JSON.parse(format.tone_adjustments) : null,
+      };
+
+      return jsonResponse(parsed);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // PUT /api/copywriting/formats/:id - Update content format
+  if (formatIdMatch && req.method === 'PUT') {
+    try {
+      const body = (await req.json()) as {
+        customLabel?: string;
+        description?: string;
+        icon?: string;
+        colorScheme?: { color: string; bgColor: string; borderColor: string };
+        isEnabled?: boolean;
+        isDefault?: boolean;
+        displayOrder?: number;
+        lengthConstraints?: { min?: number; max?: number; optimal?: number; unit?: 'chars' | 'words' };
+        structureHints?: { sections?: Array<{ name: string; prompt: string }>; framework?: string };
+        formatRules?: { preferEmojis?: boolean; avoidHashtags?: boolean; customInstructions?: string[] };
+        toneAdjustments?: { formality?: number; authority?: number; warmth?: number };
+      };
+
+      const success = copywritingDb.updateBrandFormat(formatIdMatch[1], body);
+
+      if (!success) {
+        return jsonResponse({ error: 'Content format not found' }, 404);
+      }
+
+      const format = copywritingDb.getBrandFormat(formatIdMatch[1]);
+      if (!format) {
+        return jsonResponse({ error: 'Content format not found' }, 404);
+      }
+
+      const parsed = {
+        ...format,
+        color_scheme: format.color_scheme ? JSON.parse(format.color_scheme) : null,
+        length_constraints: format.length_constraints ? JSON.parse(format.length_constraints) : null,
+        structure_hints: format.structure_hints ? JSON.parse(format.structure_hints) : null,
+        format_rules: format.format_rules ? JSON.parse(format.format_rules) : null,
+        tone_adjustments: format.tone_adjustments ? JSON.parse(format.tone_adjustments) : null,
+      };
+
+      return jsonResponse(parsed);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // DELETE /api/copywriting/formats/:id - Delete content format
+  if (formatIdMatch && req.method === 'DELETE') {
+    try {
+      const success = copywritingDb.deleteBrandFormat(formatIdMatch[1]);
+      if (!success) {
+        return jsonResponse({ error: 'Content format not found' }, 404);
+      }
+      return jsonResponse({ success: true });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // PATCH /api/copywriting/formats/:id/toggle - Toggle format enabled/disabled
+  const formatToggleMatch = pathname.match(/^\/api\/copywriting\/formats\/([^/]+)\/toggle$/);
+  if (formatToggleMatch && req.method === 'PATCH') {
+    try {
+      const body = (await req.json()) as { enabled: boolean };
+
+      if (body.enabled === undefined) {
+        return jsonResponse({ error: 'enabled field is required' }, 400);
+      }
+
+      const success = copywritingDb.toggleFormatEnabled(formatToggleMatch[1], body.enabled);
+      if (!success) {
+        return jsonResponse({ error: 'Content format not found' }, 404);
+      }
+
+      const format = copywritingDb.getBrandFormat(formatToggleMatch[1]);
+      if (!format) {
+        return jsonResponse({ error: 'Content format not found' }, 404);
+      }
+
+      const parsed = {
+        ...format,
+        color_scheme: format.color_scheme ? JSON.parse(format.color_scheme) : null,
+        length_constraints: format.length_constraints ? JSON.parse(format.length_constraints) : null,
+        structure_hints: format.structure_hints ? JSON.parse(format.structure_hints) : null,
+        format_rules: format.format_rules ? JSON.parse(format.format_rules) : null,
+        tone_adjustments: format.tone_adjustments ? JSON.parse(format.tone_adjustments) : null,
+      };
+
+      return jsonResponse(parsed);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // PATCH /api/copywriting/formats/:id/default - Set format as default
+  const formatDefaultMatch = pathname.match(/^\/api\/copywriting\/formats\/([^/]+)\/default$/);
+  if (formatDefaultMatch && req.method === 'PATCH') {
+    try {
+      const success = copywritingDb.setDefaultFormat(formatDefaultMatch[1]);
+      if (!success) {
+        return jsonResponse({ error: 'Content format not found' }, 404);
+      }
+
+      const format = copywritingDb.getBrandFormat(formatDefaultMatch[1]);
+      if (!format) {
+        return jsonResponse({ error: 'Content format not found' }, 404);
+      }
+
+      const parsed = {
+        ...format,
+        color_scheme: format.color_scheme ? JSON.parse(format.color_scheme) : null,
+        length_constraints: format.length_constraints ? JSON.parse(format.length_constraints) : null,
+        structure_hints: format.structure_hints ? JSON.parse(format.structure_hints) : null,
+        format_rules: format.format_rules ? JSON.parse(format.format_rules) : null,
+        tone_adjustments: format.tone_adjustments ? JSON.parse(format.tone_adjustments) : null,
+      };
+
+      return jsonResponse(parsed);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
   // Route not handled
   return undefined;
 }

@@ -5,8 +5,77 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import React, { useState } from 'react';
-import { Linkedin, Instagram, Facebook, FileText, Mail, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Linkedin,
+  Instagram,
+  Facebook,
+  FileText,
+  Mail,
+  Sparkles,
+  type LucideIcon,
+  Twitter,
+  Globe,
+  MessageSquare,
+  Newspaper,
+  BookOpen,
+} from 'lucide-react';
+
+// ============================================================================
+// ICON MAPPING
+// ============================================================================
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  linkedin: Linkedin,
+  instagram: Instagram,
+  facebook: Facebook,
+  twitter: Twitter,
+  'file-text': FileText,
+  mail: Mail,
+  sparkles: Sparkles,
+  globe: Globe,
+  'message-square': MessageSquare,
+  newspaper: Newspaper,
+  'book-open': BookOpen,
+};
+
+/**
+ * Get icon component from icon name string
+ */
+export function getFormatIcon(iconName?: string): LucideIcon {
+  return ICON_MAP[iconName || ''] || FileText;
+}
+
+// ============================================================================
+// BRAND CONTENT FORMAT TYPE (from API)
+// ============================================================================
+
+export interface BrandContentFormat {
+  id: string;
+  brand_id: string;
+  format_type: string;
+  custom_label?: string;
+  description?: string;
+  icon?: string;
+  color_scheme?: {
+    color: string;
+    bgColor: string;
+    borderColor: string;
+  } | null;
+  is_enabled: number;
+  is_default: number;
+  display_order: number;
+  length_constraints?: {
+    min?: number;
+    max?: number;
+    optimal?: number;
+    unit?: 'chars' | 'words';
+  } | null;
+}
+
+// ============================================================================
+// LEGACY STATIC CONTENT TYPES (fallback when no brand formats exist)
+// ============================================================================
 
 export type ContentType =
   | 'linkedin_post'
@@ -21,7 +90,7 @@ interface ContentTypeConfig {
   label: string;
   description: string;
   lengthHint: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
   color: string;
   bgColor: string;
   borderColor: string;
@@ -89,6 +158,46 @@ const CONTENT_TYPES: ContentTypeConfig[] = [
     borderColor: 'rgba(139, 92, 246, 0.3)',
   },
 ];
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Get length hint string from format constraints
+ */
+function getLengthHint(constraints?: BrandContentFormat['length_constraints']): string {
+  if (!constraints) return 'Flexible';
+  const unit = constraints.unit || 'chars';
+  if (constraints.optimal) {
+    return `~${constraints.optimal} ${unit}`;
+  }
+  if (constraints.min && constraints.max) {
+    return `${constraints.min}-${constraints.max} ${unit}`;
+  }
+  if (constraints.max) {
+    return `max ${constraints.max} ${unit}`;
+  }
+  return 'Flexible';
+}
+
+/**
+ * Get default colors for a format type
+ */
+function getDefaultColors(formatType: string): { color: string; bgColor: string; borderColor: string } {
+  const defaults: Record<string, { color: string; bgColor: string; borderColor: string }> = {
+    linkedin_post: { color: '#0A66C2', bgColor: 'rgba(10,102,194,0.1)', borderColor: 'rgba(10,102,194,0.3)' },
+    facebook_post: { color: '#1877F2', bgColor: 'rgba(24,119,242,0.1)', borderColor: 'rgba(24,119,242,0.3)' },
+    instagram_post: { color: '#E4405F', bgColor: 'rgba(228,64,95,0.1)', borderColor: 'rgba(228,64,95,0.3)' },
+    article: { color: '#10B981', bgColor: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.3)' },
+    newsletter: { color: '#F59E0B', bgColor: 'rgba(245,158,11,0.1)', borderColor: 'rgba(245,158,11,0.3)' },
+  };
+  return defaults[formatType] || { color: '#8B5CF6', bgColor: 'rgba(139,92,246,0.1)', borderColor: 'rgba(139,92,246,0.3)' };
+}
+
+// ============================================================================
+// CONTENT TYPE SELECTOR (Legacy, static)
+// ============================================================================
 
 interface ContentTypeSelectorProps {
   selectedType: ContentType | null;
@@ -216,9 +325,10 @@ export function ContentTypeSelector({
   );
 }
 
-/**
- * Compact version for inline use (e.g., in chat input area)
- */
+// ============================================================================
+// CONTENT TYPE BADGE (Legacy, static)
+// ============================================================================
+
 interface ContentTypeBadgeProps {
   type: ContentType;
   onClear?: () => void;
@@ -268,6 +378,62 @@ export function ContentTypeBadge({ type, onClear }: ContentTypeBadgeProps) {
   );
 }
 
+// ============================================================================
+// CONTENT FORMAT BADGE (Dynamic, from brand format)
+// ============================================================================
+
+interface ContentFormatBadgeProps {
+  format: BrandContentFormat;
+  onClear?: () => void;
+}
+
+export function ContentFormatBadge({ format, onClear }: ContentFormatBadgeProps) {
+  const colors = format.color_scheme || getDefaultColors(format.format_type);
+  const Icon = getFormatIcon(format.icon);
+  const label = format.custom_label || format.format_type;
+
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '4px 10px',
+        backgroundColor: colors.bgColor,
+        border: `1px solid ${colors.borderColor}`,
+        borderRadius: '16px',
+        fontSize: '12px',
+        color: colors.color,
+        fontWeight: 500,
+      }}
+    >
+      <Icon style={{ width: 12, height: 12 }} />
+      <span>{label}</span>
+      {onClear && (
+        <button
+          onClick={onClear}
+          style={{
+            marginLeft: '2px',
+            padding: '0 2px',
+            backgroundColor: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'rgba(255, 255, 255, 0.5)',
+            fontSize: '14px',
+            lineHeight: 1,
+          }}
+        >
+          &times;
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// LEGACY HELPER FUNCTIONS
+// ============================================================================
+
 /**
  * Get content type configuration by type
  */
@@ -282,11 +448,10 @@ export function getContentTypeOptions(): Array<{ value: ContentType; label: stri
   return CONTENT_TYPES.map((c) => ({ value: c.type, label: c.label }));
 }
 
-/**
- * Quick-select content type bar for inline use in chat welcome
- * Shows all content types as horizontal pills for easy access
- * Supports multi-select for creating content series (e.g., article + LinkedIn post)
- */
+// ============================================================================
+// CONTENT TYPE QUICK SELECT (Legacy, static - fallback)
+// ============================================================================
+
 interface ContentTypeQuickSelectProps {
   selectedTypes: ContentType[];
   onToggle: (type: ContentType) => void;
@@ -459,6 +624,299 @@ export function ContentTypeQuickSelect({
           {selectedTypes.length === 1
             ? 'Just type your topic above and press Enter to start creating!'
             : `Creating a content series: ${selectedTypes.map(t => CONTENT_TYPES.find(c => c.type === t)?.label).join(' → ')}`
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// CONTENT FORMAT QUICK SELECT (Dynamic, fetches from API)
+// ============================================================================
+
+interface ContentFormatQuickSelectProps {
+  brandId: string;
+  selectedFormatIds: string[];
+  onToggle: (formatId: string) => void;
+  disabled?: boolean;
+}
+
+export function ContentFormatQuickSelect({
+  brandId,
+  selectedFormatIds,
+  onToggle,
+  disabled = false,
+}: ContentFormatQuickSelectProps) {
+  const [formats, setFormats] = useState<BrandContentFormat[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!brandId) {
+      setFormats([]);
+      setLoading(false);
+      return;
+    }
+
+    const fetchFormats = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`/api/copywriting/brands/${brandId}/formats`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch formats');
+        }
+        const data = await response.json();
+        // Filter to only enabled formats
+        const enabledFormats = (data.formats || []).filter(
+          (f: BrandContentFormat) => f.is_enabled === 1
+        );
+        setFormats(enabledFormats);
+      } catch (err) {
+        console.error('Error fetching brand formats:', err);
+        setError('Failed to load content formats');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFormats();
+  }, [brandId]);
+
+  // If no formats and no error, maybe we need to initialize
+  const hasNoFormats = !loading && !error && formats.length === 0;
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div
+        style={{
+          marginTop: '16px',
+          padding: '16px',
+          backgroundColor: 'rgb(38, 40, 42)',
+          borderRadius: '12px',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          color: 'rgba(255, 255, 255, 0.5)',
+          fontSize: '13px',
+        }}
+      >
+        Loading content formats...
+      </div>
+    );
+  }
+
+  // Show error
+  if (error) {
+    return (
+      <div
+        style={{
+          marginTop: '16px',
+          padding: '16px',
+          backgroundColor: 'rgb(38, 40, 42)',
+          borderRadius: '12px',
+          border: '1px solid rgba(255, 100, 100, 0.3)',
+          color: 'rgba(255, 100, 100, 0.8)',
+          fontSize: '13px',
+        }}
+      >
+        {error}
+      </div>
+    );
+  }
+
+  // If no formats, show message to set up formats
+  if (hasNoFormats) {
+    return (
+      <div
+        style={{
+          marginTop: '16px',
+          padding: '16px',
+          backgroundColor: 'rgb(38, 40, 42)',
+          borderRadius: '12px',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          color: 'rgba(255, 255, 255, 0.5)',
+          fontSize: '13px',
+          textAlign: 'center',
+        }}
+      >
+        No content formats configured for this brand.
+        <br />
+        <span style={{ fontSize: '12px', opacity: 0.7 }}>
+          Configure formats in the Brand Voice panel.
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: '16px',
+        padding: '16px',
+        backgroundColor: 'rgb(38, 40, 42)',
+        borderRadius: '12px',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '12px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: '12px',
+            fontWeight: 600,
+            color: 'rgba(255, 255, 255, 0.6)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.03em',
+          }}
+        >
+          What do you want to create?
+        </div>
+        {selectedFormatIds.length > 1 && (
+          <div
+            style={{
+              fontSize: '11px',
+              color: '#10B981',
+              backgroundColor: 'rgba(16, 185, 129, 0.15)',
+              padding: '4px 8px',
+              borderRadius: '12px',
+              fontWeight: 500,
+            }}
+          >
+            Series: {selectedFormatIds.length} formats
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '8px',
+        }}
+      >
+        {formats.map((format) => {
+          const Icon = getFormatIcon(format.icon);
+          const colors = format.color_scheme || getDefaultColors(format.format_type);
+          const label = format.custom_label || format.format_type;
+          const isSelected = selectedFormatIds.includes(format.id);
+          const selectionOrder = selectedFormatIds.indexOf(format.id) + 1;
+          const lengthHint = getLengthHint(format.length_constraints);
+
+          return (
+            <button
+              key={format.id}
+              onClick={() => !disabled && onToggle(format.id)}
+              disabled={disabled}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 14px',
+                borderRadius: '20px',
+                border: `2px solid ${isSelected ? colors.color : 'rgba(255, 255, 255, 0.1)'}`,
+                backgroundColor: isSelected ? colors.bgColor : 'transparent',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: disabled ? 0.5 : 1,
+                transition: 'all 200ms ease',
+                outline: 'none',
+                position: 'relative',
+              }}
+              onMouseEnter={(e) => {
+                if (!disabled && !isSelected) {
+                  e.currentTarget.style.borderColor = colors.borderColor;
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!disabled && !isSelected) {
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }
+              }}
+              title={format.description || label}
+            >
+              {/* Selection order badge for multi-select */}
+              {isSelected && selectedFormatIds.length > 1 && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    backgroundColor: colors.color,
+                    color: 'white',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                  }}
+                >
+                  {selectionOrder}
+                </div>
+              )}
+              <Icon
+                style={{
+                  width: 16,
+                  height: 16,
+                  color: isSelected ? colors.color : 'rgba(255, 255, 255, 0.6)',
+                  transition: 'color 200ms ease',
+                }}
+              />
+              <span
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  color: isSelected ? 'white' : 'rgba(255, 255, 255, 0.8)',
+                }}
+              >
+                {label}
+              </span>
+              {/* Show length hint on hover */}
+              {lengthHint !== 'Flexible' && (
+                <span
+                  style={{
+                    fontSize: '10px',
+                    color: isSelected ? colors.color : 'rgba(255, 255, 255, 0.4)',
+                    backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)',
+                    padding: '2px 6px',
+                    borderRadius: '8px',
+                    fontWeight: 500,
+                    marginLeft: '-4px',
+                  }}
+                >
+                  {lengthHint}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {selectedFormatIds.length > 0 && (
+        <div
+          style={{
+            marginTop: '12px',
+            fontSize: '12px',
+            color: 'rgba(255, 255, 255, 0.5)',
+          }}
+        >
+          {selectedFormatIds.length === 1
+            ? 'Just type your topic above and press Enter to start creating!'
+            : `Creating a content series: ${selectedFormatIds.map(id => {
+                const f = formats.find(fmt => fmt.id === id);
+                return f?.custom_label || f?.format_type || 'Unknown';
+              }).join(' → ')}`
           }
         </div>
       )}

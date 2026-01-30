@@ -23,6 +23,7 @@ import type { AgentDefinition } from './agents';
 import type { UserConfig } from './userConfig';
 import { getUserDisplayName } from './userConfig';
 import { buildReferenceContext, formatReferencesForPrompt } from './copywriting/reference-context';
+import { copywritingDb } from './copywriting/database';
 
 /**
  * Format current date and time for the given timezone (compact version)
@@ -164,6 +165,8 @@ export interface CopywritingContext {
   tonePresetId?: string;
   includeReferences?: boolean; // default: true
   referenceTags?: string[]; // filter references by specific tags
+  // Content format IDs (brand-specific, replaces hardcoded contentTypes)
+  contentFormatIds?: string[];
 }
 
 /**
@@ -239,7 +242,157 @@ Use endpoint #1 for quick context, #2 for detailed guidelines when crafting cont
       }
     }
 
-    if (copywritingContext.contentTypes && copywritingContext.contentTypes.length > 0) {
+    // Inject template structure if selected
+    if (copywritingContext.templateId) {
+      const template = copywritingDb.getTemplate(copywritingContext.templateId);
+      if (template) {
+        const structure = typeof template.structure === 'string'
+          ? JSON.parse(template.structure)
+          : template.structure;
+
+        prompt += `\n\n📋 SELECTED CONTENT TEMPLATE: ${template.name}
+${template.description ? `Description: ${template.description}` : ''}
+Category: ${template.category}
+${structure.framework ? `Framework: ${structure.framework}` : ''}
+
+REQUIRED SECTIONS (follow this structure):`;
+
+        if (structure.sections && Array.isArray(structure.sections)) {
+          structure.sections.forEach((section: { name: string; prompt: string; maxChars?: number; variables?: string[] }, i: number) => {
+            prompt += `\n${i + 1}. ${section.name.toUpperCase()}: ${section.prompt}`;
+            if (section.maxChars) {
+              prompt += ` (max ~${section.maxChars} chars)`;
+            }
+            if (section.variables && section.variables.length > 0) {
+              prompt += ` [Variables: ${section.variables.join(', ')}]`;
+            }
+          });
+        }
+
+        // Apply template's tone adjustments as baseline
+        if (structure.tone_adjustments) {
+          prompt += `\n\nTemplate Tone Adjustments:`;
+          for (const [key, value] of Object.entries(structure.tone_adjustments)) {
+            prompt += ` ${key}: ${value};`;
+          }
+        }
+      }
+    }
+
+    // Inject tone preset adjustments if selected
+    if (copywritingContext.tonePresetId) {
+      const preset = copywritingDb.getTonePreset(copywritingContext.tonePresetId);
+      if (preset) {
+        const adjustments = typeof preset.tone_adjustments === 'string'
+          ? JSON.parse(preset.tone_adjustments)
+          : preset.tone_adjustments;
+
+        prompt += `\n\n🎭 ACTIVE TONE PRESET: ${preset.name}
+${preset.description ? `Context: ${preset.description}` : ''}
+
+APPLY THESE TONE ADJUSTMENTS (relative to brand baseline):`;
+
+        // Core tone dimensions
+        const coreDimensions = ['formality', 'authority', 'warmth', 'humor', 'energy'];
+        for (const dim of coreDimensions) {
+          if (adjustments[dim] !== undefined) {
+            const val = adjustments[dim];
+            const display = typeof val === 'number' ? (val >= 0 ? `+${val}` : `${val}`) : val;
+            prompt += `\n- ${dim}: ${display}`;
+          }
+        }
+
+        // Phrase preferences
+        if (adjustments.avoidPhrases && adjustments.avoidPhrases.length > 0) {
+          prompt += `\n\nAVOID phrases: ${adjustments.avoidPhrases.join(', ')}`;
+        }
+        if (adjustments.preferPhrases && adjustments.preferPhrases.length > 0) {
+          prompt += `\nPREFER phrases: ${adjustments.preferPhrases.join(', ')}`;
+        }
+
+        // Use cases
+        const useCases = typeof preset.use_cases === 'string'
+          ? JSON.parse(preset.use_cases)
+          : preset.use_cases;
+        if (useCases && useCases.length > 0) {
+          prompt += `\n\nThis tone is best for: ${useCases.join(', ')}`;
+        }
+      }
+    }
+
+    // Inject content formats (brand-specific, primary approach)
+    if (copywritingContext.contentFormatIds && copywritingContext.contentFormatIds.length > 0) {
+      const formats = copywritingContext.contentFormatIds
+        .map(id => copywritingDb.getBrandFormat(id))
+        .filter((f): f is NonNullable<typeof f> => f !== null);
+
+      if (formats.length > 0) {
+        prompt += `\n\n📋 CONTENT FORMATS TO CREATE:`;
+
+        formats.forEach((format, index) => {
+          const label = format.custom_label || format.format_type;
+          prompt += `\n\n### ${index + 1}. ${label.toUpperCase()}`;
+
+          if (format.description) {
+            prompt += `\nDescription: ${format.description}`;
+          }
+
+          // Length constraints
+          if (format.length_constraints) {
+            const lc = typeof format.length_constraints === 'string'
+              ? JSON.parse(format.length_constraints)
+              : format.length_constraints;
+            const unit = lc.unit || 'chars';
+            if (lc.optimal) {
+              prompt += `\nTarget length: ~${lc.optimal} ${unit}`;
+            } else if (lc.min && lc.max) {
+              prompt += `\nLength: ${lc.min}-${lc.max} ${unit}`;
+            } else if (lc.max) {
+              prompt += `\nMax length: ${lc.max} ${unit}`;
+            }
+          }
+
+          // Format rules
+          if (format.format_rules) {
+            const rules = typeof format.format_rules === 'string'
+              ? JSON.parse(format.format_rules)
+              : format.format_rules;
+
+            if (rules.preferEmojis) {
+              prompt += `\nUse emojis`;
+            }
+            if (rules.avoidHashtags) {
+              prompt += `\nAvoid hashtags`;
+            }
+            if (rules.customInstructions && rules.customInstructions.length > 0) {
+              prompt += `\nRules: ${rules.customInstructions.join('; ')}`;
+            }
+          }
+
+          // Tone adjustments
+          if (format.tone_adjustments) {
+            const ta = typeof format.tone_adjustments === 'string'
+              ? JSON.parse(format.tone_adjustments)
+              : format.tone_adjustments;
+
+            const adjustments: string[] = [];
+            if (ta.formality !== undefined) adjustments.push(`formality: ${ta.formality >= 0 ? '+' : ''}${ta.formality}`);
+            if (ta.authority !== undefined) adjustments.push(`authority: ${ta.authority >= 0 ? '+' : ''}${ta.authority}`);
+            if (ta.warmth !== undefined) adjustments.push(`warmth: ${ta.warmth >= 0 ? '+' : ''}${ta.warmth}`);
+
+            if (adjustments.length > 0) {
+              prompt += `\nTone adjustments: ${adjustments.join(', ')}`;
+            }
+          }
+        });
+
+        if (formats.length > 1) {
+          prompt += `\n\n---\nCreate content for ALL ${formats.length} formats above, optimized for each platform. Maintain consistent core message across formats.`;
+        }
+      }
+    }
+    // Fallback: Legacy contentTypes (for backwards compatibility)
+    else if (copywritingContext.contentTypes && copywritingContext.contentTypes.length > 0) {
       const contentTypeList = copywritingContext.contentTypes
         .map((ct, i) => `${i + 1}. ${ct.label}`)
         .join('\n');

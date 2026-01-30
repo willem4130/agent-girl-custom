@@ -25,6 +25,9 @@ interface CopywritingContextValue {
   setTonePresetId: (id: string | null) => void;
   selectedReferenceTags: string[];
   setSelectedReferenceTags: (tags: string[]) => void;
+  // Content format IDs (multi-select for content series)
+  contentFormatIds: string[];
+  setContentFormatIds: (ids: string[]) => void;
 }
 
 const CopywritingContext = createContext<CopywritingContextValue | null>(null);
@@ -38,6 +41,8 @@ export function CopywritingProvider({ children }: { children: ReactNode }) {
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [tonePresetId, setTonePresetId] = useState<string | null>(null);
   const [selectedReferenceTags, setSelectedReferenceTags] = useState<string[]>([]);
+  // Content format IDs (multi-select for content series)
+  const [contentFormatIds, setContentFormatIds] = useState<string[]>([]);
 
   const isCopywritingMode = mode === 'copywriting';
 
@@ -66,6 +71,8 @@ export function CopywritingProvider({ children }: { children: ReactNode }) {
         setTonePresetId,
         selectedReferenceTags,
         setSelectedReferenceTags,
+        contentFormatIds,
+        setContentFormatIds,
       }}
     >
       {children}
@@ -94,6 +101,8 @@ export function useCopywritingContext() {
       setTonePresetId: () => {},
       selectedReferenceTags: [],
       setSelectedReferenceTags: () => {},
+      contentFormatIds: [],
+      setContentFormatIds: () => {},
     };
   }
   return context;

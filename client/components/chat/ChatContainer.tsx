@@ -117,7 +117,7 @@ export function ChatContainer() {
     text: string;
     files?: import('../message/types').FileAttachment[];
     mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media';
-    copywritingContext?: { brandId?: string; contentTypes?: string[] };
+    copywritingContext?: { brandId?: string; contentTypes?: string[]; contentFormatIds?: string[]; templateId?: string; tonePresetId?: string };
   }>>([]);
 
   const sessionAPI = useSessionAPI();
@@ -1062,7 +1062,7 @@ export function ChatContainer() {
     });
   };
 
-  const handleSubmit = async (files?: import('../message/types').FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media', messageOverride?: string, fromQueue = false, copywritingContext?: { brandId?: string; contentTypes?: string[] }) => {
+  const handleSubmit = async (files?: import('../message/types').FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media', messageOverride?: string, fromQueue = false, copywritingContextArg?: { brandId?: string; contentTypes?: string[]; contentFormatIds?: string[]; templateId?: string; tonePresetId?: string }) => {
     const messageText = messageOverride || inputValue;
     if (!messageText.trim()) return;
 
@@ -1074,7 +1074,7 @@ export function ChatContainer() {
         text: messageText,
         files,
         mode: mode || currentSessionMode,
-        copywritingContext,
+        copywritingContext: copywritingContextArg,
       }]);
       setInputValue(''); // Clear input so user can continue typing
       toast.info(`Message queued (${pendingMessages.length + 1} pending)`);
@@ -1185,9 +1185,14 @@ export function ChatContainer() {
 
       // Build copywriting context - use provided context or auto-generate from current state
       const effectiveMode = mode || currentSessionMode;
-      const effectiveCopywritingContext = copywritingContext || (
+      const effectiveCopywritingContext = copywritingContextArg || (
         (effectiveMode === 'copywriting' || effectiveMode === 'media') && selectedBrandId
-          ? { brandId: selectedBrandId }
+          ? {
+              brandId: selectedBrandId,
+              contentFormatIds: copywritingContext.contentFormatIds?.length ? copywritingContext.contentFormatIds : undefined,
+              templateId: copywritingContext.templateId || undefined,
+              tonePresetId: copywritingContext.tonePresetId || undefined,
+            }
           : undefined
       );
 

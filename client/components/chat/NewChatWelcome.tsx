@@ -25,8 +25,12 @@ import { ModeSelector } from './ModeSelector';
 import { ModeIndicator } from './ModeIndicator';
 import type { SlashCommand } from '../../hooks/useWebSocket';
 import { CommandTextRenderer } from '../message/CommandTextRenderer';
-import { BrandSelector, BrandFormModal, BrandVoicePanel, CopyLibraryPanel } from '../copywriting';
-import { ContentTypeQuickSelect, type ContentType } from '../copywriting/ContentTypeSelector';
+import { BrandSelector, BrandFormModal, BrandVoicePanel } from '../copywriting';
+import { ContentTypeQuickSelect, ContentFormatQuickSelect, type ContentType } from '../copywriting/ContentTypeSelector';
+import { BrandFormatsPanel } from '../copywriting/BrandFormatsPanel';
+import { PostTypeSelector } from '../copywriting/PostTypeSelector';
+import { TonePresetSelector } from '../copywriting/TonePresetSelector';
+import { useCopywritingContext } from '../../lib/stores/copywritingContext';
 import {
   useBrandAPI,
   type Brand,
@@ -37,10 +41,18 @@ import {
   type VoiceAnalysis,
 } from '../../hooks/useBrandAPI';
 
+interface CopywritingContextPayload {
+  brandId?: string;
+  contentTypes?: ContentType[];
+  contentFormatIds?: string[];
+  templateId?: string;
+  tonePresetId?: string;
+}
+
 interface NewChatWelcomeProps {
   inputValue: string;
   onInputChange: (value: string) => void;
-  onSubmit: (files?: FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media', messageOverride?: string, fromQueue?: boolean, copywritingContext?: { brandId?: string; contentTypes?: ContentType[] }) => void;
+  onSubmit: (files?: FileAttachment[], mode?: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media', messageOverride?: string, fromQueue?: boolean, copywritingContext?: CopywritingContextPayload) => void;
   onStop?: () => void;
   disabled?: boolean;
   isGenerating?: boolean;
@@ -85,6 +97,7 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
 
   // Brand management state (for copywriting mode)
   const brandAPI = useBrandAPI();
+  const { templateId, tonePresetId } = useCopywritingContext();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
@@ -94,6 +107,7 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
   const [scrapedContent, setScrapedContent] = useState<Map<string, ScrapedContent[]>>(new Map());
   const [isBrandDataLoading, setIsBrandDataLoading] = useState(false);
   const [selectedContentTypes, setSelectedContentTypes] = useState<ContentType[]>([]);
+  const [selectedFormatIds, setSelectedFormatIds] = useState<string[]>([]);
 
   // Load brands when copywriting or media mode is selected
   useEffect(() => {
@@ -339,19 +353,31 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
     // Normal submit handling
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      const copywritingContext = (selectedMode === 'copywriting' || selectedMode === 'media') && (selectedBrandId || selectedContentTypes.length > 0)
-        ? { brandId: selectedBrandId || undefined, contentTypes: selectedContentTypes.length > 0 ? selectedContentTypes : undefined }
+      const copywritingContextPayload: CopywritingContextPayload | undefined = (selectedMode === 'copywriting' || selectedMode === 'media') && (selectedBrandId || selectedContentTypes.length > 0 || selectedFormatIds.length > 0)
+        ? {
+            brandId: selectedBrandId || undefined,
+            contentTypes: selectedContentTypes.length > 0 ? selectedContentTypes : undefined,
+            contentFormatIds: selectedFormatIds.length > 0 ? selectedFormatIds : undefined,
+            templateId: templateId || undefined,
+            tonePresetId: tonePresetId || undefined,
+          }
         : undefined;
-      onSubmit(attachedFiles.length > 0 ? attachedFiles : undefined, selectedMode, undefined, false, copywritingContext);
+      onSubmit(attachedFiles.length > 0 ? attachedFiles : undefined, selectedMode, undefined, false, copywritingContextPayload);
       setAttachedFiles([]);
     }
   };
 
   const handleSubmit = () => {
-    const copywritingContext = (selectedMode === 'copywriting' || selectedMode === 'media') && (selectedBrandId || selectedContentTypes.length > 0)
-      ? { brandId: selectedBrandId || undefined, contentTypes: selectedContentTypes.length > 0 ? selectedContentTypes : undefined }
+    const copywritingContextPayload: CopywritingContextPayload | undefined = (selectedMode === 'copywriting' || selectedMode === 'media') && (selectedBrandId || selectedContentTypes.length > 0 || selectedFormatIds.length > 0)
+      ? {
+          brandId: selectedBrandId || undefined,
+          contentTypes: selectedContentTypes.length > 0 ? selectedContentTypes : undefined,
+          contentFormatIds: selectedFormatIds.length > 0 ? selectedFormatIds : undefined,
+          templateId: templateId || undefined,
+          tonePresetId: tonePresetId || undefined,
+        }
       : undefined;
-    onSubmit(attachedFiles.length > 0 ? attachedFiles : undefined, selectedMode, undefined, false, copywritingContext);
+    onSubmit(attachedFiles.length > 0 ? attachedFiles : undefined, selectedMode, undefined, false, copywritingContextPayload);
     setAttachedFiles([]);
   };
 
@@ -735,30 +761,72 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
                 isLoading={brandAPI.isLoading}
               />
 
-              {/* Content Type Quick Select - always visible in copywriting mode */}
-              <ContentTypeQuickSelect
-                selectedTypes={selectedContentTypes}
-                onToggle={(type) => {
-                  setSelectedContentTypes((prev) => {
-                    // If already selected, remove it (and any auto-added types)
-                    if (prev.includes(type)) {
-                      // If removing article, also remove auto-added linkedin_post
-                      if (type === 'article' && prev.includes('linkedin_post')) {
-                        return prev.filter((t) => t !== type && t !== 'linkedin_post');
+              {/* Content Format Quick Select - use brand formats when brand selected, fallback to legacy */}
+              {selectedBrandId ? (
+                <ContentFormatQuickSelect
+                  brandId={selectedBrandId}
+                  selectedFormatIds={selectedFormatIds}
+                  onToggle={(formatId) => {
+                    setSelectedFormatIds((prev) =>
+                      prev.includes(formatId)
+                        ? prev.filter((id) => id !== formatId)
+                        : [...prev, formatId]
+                    );
+                  }}
+                  disabled={brandAPI.isLoading}
+                />
+              ) : (
+                <ContentTypeQuickSelect
+                  selectedTypes={selectedContentTypes}
+                  onToggle={(type) => {
+                    setSelectedContentTypes((prev) => {
+                      // If already selected, remove it (and any auto-added types)
+                      if (prev.includes(type)) {
+                        // If removing article, also remove auto-added linkedin_post
+                        if (type === 'article' && prev.includes('linkedin_post')) {
+                          return prev.filter((t) => t !== type && t !== 'linkedin_post');
+                        }
+                        return prev.filter((t) => t !== type);
                       }
-                      return prev.filter((t) => t !== type);
-                    }
 
-                    // Auto-add LinkedIn post when selecting Article
-                    if (type === 'article' && !prev.includes('linkedin_post')) {
-                      return [...prev, type, 'linkedin_post'];
-                    }
+                      // Auto-add LinkedIn post when selecting Article
+                      if (type === 'article' && !prev.includes('linkedin_post')) {
+                        return [...prev, type, 'linkedin_post'];
+                      }
 
-                    return [...prev, type];
-                  });
-                }}
-                disabled={brandAPI.isLoading}
-              />
+                      return [...prev, type];
+                    });
+                  }}
+                  disabled={brandAPI.isLoading}
+                />
+              )}
+
+              {/* Post Type Template Selector - shows when brand is selected */}
+              {selectedBrandId && (
+                <div className="mt-4">
+                  <PostTypeSelector compact />
+                </div>
+              )}
+
+              {/* Tone Preset Selector - shows when brand is selected */}
+              {selectedBrandId && (
+                <div className="mt-4">
+                  <TonePresetSelector compact />
+                </div>
+              )}
+
+              {/* Brand Content Formats Panel when brand is selected */}
+              {selectedBrandId && (
+                <div className="mt-4">
+                  <BrandFormatsPanel
+                    brandId={selectedBrandId}
+                    onFormatsChange={() => {
+                      // Clear selected format IDs when formats change
+                      setSelectedFormatIds([]);
+                    }}
+                  />
+                </div>
+              )}
 
               {/* Voice Profile Panel when brand is selected */}
               {selectedBrandId && (

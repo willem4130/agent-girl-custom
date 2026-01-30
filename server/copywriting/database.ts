@@ -240,6 +240,59 @@ export interface ToneAdjustments {
   preferPhrases?: string[];
 }
 
+// ============================================================================
+// BRAND CONTENT FORMATS INTERFACES
+// ============================================================================
+
+export interface BrandContentFormatColorScheme {
+  color: string;
+  bgColor: string;
+  borderColor: string;
+}
+
+export interface BrandContentFormatLengthConstraints {
+  min?: number;
+  max?: number;
+  optimal?: number;
+  unit?: 'chars' | 'words';
+}
+
+export interface BrandContentFormatStructureHints {
+  sections?: Array<{ name: string; prompt: string }>;
+  framework?: string;
+}
+
+export interface BrandContentFormatRules {
+  preferEmojis?: boolean;
+  avoidHashtags?: boolean;
+  customInstructions?: string[];
+}
+
+export interface BrandContentFormatToneAdjustments {
+  formality?: number;
+  authority?: number;
+  warmth?: number;
+}
+
+export interface BrandContentFormat {
+  id: string;
+  brand_id: string;
+  format_type: string;
+  custom_label?: string;
+  description?: string;
+  icon?: string;
+  color_scheme?: string; // JSON: BrandContentFormatColorScheme
+  is_enabled: number; // 0 or 1
+  is_default: number; // 0 or 1
+  display_order: number;
+  length_constraints?: string; // JSON: BrandContentFormatLengthConstraints
+  structure_hints?: string; // JSON: BrandContentFormatStructureHints
+  format_rules?: string; // JSON: BrandContentFormatRules
+  tone_adjustments?: string; // JSON: BrandContentFormatToneAdjustments
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ContentGenerationSession {
   id: string;
   brand_id: string;
@@ -968,6 +1021,37 @@ class CopywritingDatabase {
     this.db.run(`
       CREATE INDEX IF NOT EXISTS idx_tone_presets_brand
       ON brand_tone_presets(brand_id)
+    `);
+
+    // ========================================================================
+    // BRAND CONTENT FORMATS TABLE
+    // ========================================================================
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS brand_content_formats (
+        id TEXT PRIMARY KEY,
+        brand_id TEXT NOT NULL,
+        format_type TEXT NOT NULL,
+        custom_label TEXT,
+        description TEXT,
+        icon TEXT,
+        color_scheme TEXT,
+        is_enabled INTEGER DEFAULT 1,
+        is_default INTEGER DEFAULT 0,
+        display_order INTEGER DEFAULT 0,
+        length_constraints TEXT,
+        structure_hints TEXT,
+        format_rules TEXT,
+        tone_adjustments TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (brand_id) REFERENCES brand_configs(id) ON DELETE CASCADE
+      )
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_content_formats_brand
+      ON brand_content_formats(brand_id)
     `);
 
     console.log('✅ Copywriting database initialized');
@@ -3440,6 +3524,332 @@ class CopywritingDatabase {
         description: preset.description,
         useCases: preset.useCases,
         isDefault: preset.name === 'Casual Update', // Default to casual
+      });
+      created.push(result);
+    }
+
+    return created;
+  }
+
+  // ============================================================================
+  // BRAND CONTENT FORMATS OPERATIONS
+  // ============================================================================
+
+  /**
+   * Get all content formats for a brand (enabled and disabled)
+   */
+  getBrandFormats(brandId: string): BrandContentFormat[] {
+    return this.db
+      .query<BrandContentFormat, [string]>(
+        'SELECT * FROM brand_content_formats WHERE brand_id = ? ORDER BY display_order ASC, created_at ASC'
+      )
+      .all(brandId);
+  }
+
+  /**
+   * Get only enabled content formats for a brand
+   */
+  getEnabledBrandFormats(brandId: string): BrandContentFormat[] {
+    return this.db
+      .query<BrandContentFormat, [string]>(
+        'SELECT * FROM brand_content_formats WHERE brand_id = ? AND is_enabled = 1 ORDER BY display_order ASC, created_at ASC'
+      )
+      .all(brandId);
+  }
+
+  /**
+   * Get a single content format by ID
+   */
+  getBrandFormat(formatId: string): BrandContentFormat | null {
+    return this.db
+      .query<BrandContentFormat, [string]>('SELECT * FROM brand_content_formats WHERE id = ?')
+      .get(formatId) || null;
+  }
+
+  /**
+   * Get the default content format for a brand
+   */
+  getDefaultBrandFormat(brandId: string): BrandContentFormat | null {
+    return this.db
+      .query<BrandContentFormat, [string]>(
+        'SELECT * FROM brand_content_formats WHERE brand_id = ? AND is_default = 1 LIMIT 1'
+      )
+      .get(brandId) || null;
+  }
+
+  /**
+   * Create a content format for a brand
+   */
+  createBrandFormat(
+    brandId: string,
+    formatType: string,
+    options: {
+      customLabel?: string;
+      description?: string;
+      icon?: string;
+      colorScheme?: BrandContentFormatColorScheme;
+      isEnabled?: boolean;
+      isDefault?: boolean;
+      displayOrder?: number;
+      lengthConstraints?: BrandContentFormatLengthConstraints;
+      structureHints?: BrandContentFormatStructureHints;
+      formatRules?: BrandContentFormatRules;
+      toneAdjustments?: BrandContentFormatToneAdjustments;
+    } = {}
+  ): BrandContentFormat {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    // If this format is default, unset any existing default
+    if (options.isDefault) {
+      this.db.run(
+        'UPDATE brand_content_formats SET is_default = 0 WHERE brand_id = ?',
+        [brandId]
+      );
+    }
+
+    // Get max display order if not provided
+    let displayOrder = options.displayOrder;
+    if (displayOrder === undefined) {
+      const maxOrder = this.db
+        .query<{ max_order: number | null }, [string]>(
+          'SELECT MAX(display_order) as max_order FROM brand_content_formats WHERE brand_id = ?'
+        )
+        .get(brandId);
+      displayOrder = (maxOrder?.max_order ?? -1) + 1;
+    }
+
+    this.db.run(
+      `INSERT INTO brand_content_formats
+        (id, brand_id, format_type, custom_label, description, icon, color_scheme,
+         is_enabled, is_default, display_order, length_constraints, structure_hints,
+         format_rules, tone_adjustments, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        brandId,
+        formatType,
+        options.customLabel || null,
+        options.description || null,
+        options.icon || null,
+        options.colorScheme ? JSON.stringify(options.colorScheme) : null,
+        options.isEnabled !== false ? 1 : 0,
+        options.isDefault ? 1 : 0,
+        displayOrder,
+        options.lengthConstraints ? JSON.stringify(options.lengthConstraints) : null,
+        options.structureHints ? JSON.stringify(options.structureHints) : null,
+        options.formatRules ? JSON.stringify(options.formatRules) : null,
+        options.toneAdjustments ? JSON.stringify(options.toneAdjustments) : null,
+        now,
+        now,
+      ]
+    );
+
+    return {
+      id,
+      brand_id: brandId,
+      format_type: formatType,
+      custom_label: options.customLabel,
+      description: options.description,
+      icon: options.icon,
+      color_scheme: options.colorScheme ? JSON.stringify(options.colorScheme) : undefined,
+      is_enabled: options.isEnabled !== false ? 1 : 0,
+      is_default: options.isDefault ? 1 : 0,
+      display_order: displayOrder,
+      length_constraints: options.lengthConstraints ? JSON.stringify(options.lengthConstraints) : undefined,
+      structure_hints: options.structureHints ? JSON.stringify(options.structureHints) : undefined,
+      format_rules: options.formatRules ? JSON.stringify(options.formatRules) : undefined,
+      tone_adjustments: options.toneAdjustments ? JSON.stringify(options.toneAdjustments) : undefined,
+      created_at: now,
+      updated_at: now,
+    };
+  }
+
+  /**
+   * Update a content format
+   */
+  updateBrandFormat(
+    formatId: string,
+    updates: {
+      customLabel?: string;
+      description?: string;
+      icon?: string;
+      colorScheme?: BrandContentFormatColorScheme;
+      isEnabled?: boolean;
+      isDefault?: boolean;
+      displayOrder?: number;
+      lengthConstraints?: BrandContentFormatLengthConstraints;
+      structureHints?: BrandContentFormatStructureHints;
+      formatRules?: BrandContentFormatRules;
+      toneAdjustments?: BrandContentFormatToneAdjustments;
+    }
+  ): boolean {
+    const format = this.getBrandFormat(formatId);
+    if (!format) return false;
+
+    // If setting as default, unset existing defaults for this brand
+    if (updates.isDefault) {
+      this.db.run(
+        'UPDATE brand_content_formats SET is_default = 0 WHERE brand_id = ?',
+        [format.brand_id]
+      );
+    }
+
+    const fields: string[] = [];
+    const values: (string | number | null)[] = [];
+
+    if (updates.customLabel !== undefined) {
+      fields.push('custom_label = ?');
+      values.push(updates.customLabel);
+    }
+    if (updates.description !== undefined) {
+      fields.push('description = ?');
+      values.push(updates.description);
+    }
+    if (updates.icon !== undefined) {
+      fields.push('icon = ?');
+      values.push(updates.icon);
+    }
+    if (updates.colorScheme !== undefined) {
+      fields.push('color_scheme = ?');
+      values.push(JSON.stringify(updates.colorScheme));
+    }
+    if (updates.isEnabled !== undefined) {
+      fields.push('is_enabled = ?');
+      values.push(updates.isEnabled ? 1 : 0);
+    }
+    if (updates.isDefault !== undefined) {
+      fields.push('is_default = ?');
+      values.push(updates.isDefault ? 1 : 0);
+    }
+    if (updates.displayOrder !== undefined) {
+      fields.push('display_order = ?');
+      values.push(updates.displayOrder);
+    }
+    if (updates.lengthConstraints !== undefined) {
+      fields.push('length_constraints = ?');
+      values.push(JSON.stringify(updates.lengthConstraints));
+    }
+    if (updates.structureHints !== undefined) {
+      fields.push('structure_hints = ?');
+      values.push(JSON.stringify(updates.structureHints));
+    }
+    if (updates.formatRules !== undefined) {
+      fields.push('format_rules = ?');
+      values.push(JSON.stringify(updates.formatRules));
+    }
+    if (updates.toneAdjustments !== undefined) {
+      fields.push('tone_adjustments = ?');
+      values.push(JSON.stringify(updates.toneAdjustments));
+    }
+
+    if (fields.length === 0) return false;
+
+    fields.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(formatId);
+
+    const result = this.db.run(
+      `UPDATE brand_content_formats SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    return result.changes > 0;
+  }
+
+  /**
+   * Delete a content format
+   */
+  deleteBrandFormat(formatId: string): boolean {
+    const result = this.db.run('DELETE FROM brand_content_formats WHERE id = ?', [formatId]);
+    return result.changes > 0;
+  }
+
+  /**
+   * Toggle format enabled/disabled
+   */
+  toggleFormatEnabled(formatId: string, enabled: boolean): boolean {
+    const result = this.db.run(
+      'UPDATE brand_content_formats SET is_enabled = ?, updated_at = ? WHERE id = ?',
+      [enabled ? 1 : 0, new Date().toISOString(), formatId]
+    );
+    return result.changes > 0;
+  }
+
+  /**
+   * Set a format as the default for its brand (clears other defaults)
+   */
+  setDefaultFormat(formatId: string): boolean {
+    const format = this.getBrandFormat(formatId);
+    if (!format) return false;
+
+    // Clear all defaults for this brand
+    this.db.run(
+      'UPDATE brand_content_formats SET is_default = 0 WHERE brand_id = ?',
+      [format.brand_id]
+    );
+
+    // Set this one as default
+    const result = this.db.run(
+      'UPDATE brand_content_formats SET is_default = 1, updated_at = ? WHERE id = ?',
+      [new Date().toISOString(), formatId]
+    );
+
+    return result.changes > 0;
+  }
+
+  /**
+   * Initialize default content formats for a brand
+   * Creates LinkedIn Post, Newsletter, and Website Article formats
+   */
+  initializeDefaultFormats(brandId: string): BrandContentFormat[] {
+    const defaultFormats: Array<{
+      formatType: string;
+      customLabel: string;
+      description: string;
+      icon: string;
+      colorScheme: BrandContentFormatColorScheme;
+      lengthConstraints: BrandContentFormatLengthConstraints;
+      isDefault?: boolean;
+    }> = [
+      {
+        formatType: 'linkedin_post',
+        customLabel: 'LinkedIn Post',
+        description: 'Professional thought leadership for LinkedIn',
+        icon: 'linkedin',
+        colorScheme: { color: '#0A66C2', bgColor: 'rgba(10,102,194,0.1)', borderColor: 'rgba(10,102,194,0.3)' },
+        lengthConstraints: { min: 500, max: 1500, optimal: 1000, unit: 'chars' },
+        isDefault: true,
+      },
+      {
+        formatType: 'newsletter',
+        customLabel: 'Nieuwsbrief',
+        description: 'Email newsletter with personal tone',
+        icon: 'mail',
+        colorScheme: { color: '#F59E0B', bgColor: 'rgba(245,158,11,0.1)', borderColor: 'rgba(245,158,11,0.3)' },
+        lengthConstraints: { min: 300, max: 800, optimal: 500, unit: 'words' },
+      },
+      {
+        formatType: 'article',
+        customLabel: 'Website Artikel',
+        description: 'Long-form article for website/blog',
+        icon: 'file-text',
+        colorScheme: { color: '#10B981', bgColor: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.3)' },
+        lengthConstraints: { min: 800, max: 2000, optimal: 1200, unit: 'words' },
+      },
+    ];
+
+    const created: BrandContentFormat[] = [];
+    for (let i = 0; i < defaultFormats.length; i++) {
+      const format = defaultFormats[i];
+      const result = this.createBrandFormat(brandId, format.formatType, {
+        customLabel: format.customLabel,
+        description: format.description,
+        icon: format.icon,
+        colorScheme: format.colorScheme,
+        lengthConstraints: format.lengthConstraints,
+        isDefault: format.isDefault,
+        displayOrder: i,
       });
       created.push(result);
     }

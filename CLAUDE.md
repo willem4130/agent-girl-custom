@@ -1,209 +1,104 @@
 # Agent Girl
 
-Desktop-first chat interface for Claude Agent SDK with real-time streaming, persistent sessions, specialized sub-agents, and integrated copywriting/media generation workflows.
+Desktop-first chat interface for Claude Agent SDK with real-time streaming, persistent sessions, and integrated copywriting/media workflows.
 
 ## Tech Stack
 
-Bun + React 19 + TypeScript + Tailwind CSS + Radix UI + React Flow + SQLite + FAL.ai
+Bun + React 19 + TypeScript + Tailwind CSS + Radix UI + SQLite + FAL.ai
+
+## Quick Commands
+
+```bash
+# Dev server (port 3001)
+bun run dev
+
+# Type check (REQUIRED after edits)
+bunx tsc --noEmit
+
+# Lint
+bunx eslint .
+
+# Restart server
+lsof -ti:3001 | xargs kill -9 2>/dev/null; bun run dev
+```
+
+## Code Quality - MANDATORY
+
+After editing ANY file:
+1. Run `bunx tsc --noEmit` - fix ALL errors
+2. Run `bunx eslint .` - fix ALL warnings
+3. Check server output for runtime errors
 
 ## Project Structure
 
 ```
-agent-girl-custom/
-├── server/                       # Backend (Bun + WebSocket, port 3001)
-│   ├── server.ts                 # Main entry point
-│   ├── agents.ts                 # Agent configuration
-│   ├── systemPrompt.ts           # System prompts per mode
-│   ├── database.ts               # SQLite: sessions, messages, workflows
-│   ├── routes/                   # REST API endpoints
-│   │   ├── sessions.ts           # Session CRUD
-│   │   ├── copywriting.ts        # Brand, copy, image generation
-│   │   ├── media.ts              # Image/video generation
-│   │   ├── workflows.ts          # Workflow CRUD
-│   │   └── commands.ts           # Slash command execution
-│   ├── websocket/                # Real-time messaging
-│   ├── commands/                 # Slash commands by mode
-│   │   ├── copywriting/          # Copywriting mode commands
-│   │   ├── coder/                # Coder mode commands
-│   │   ├── media/                # Media mode commands
-│   │   ├── general/              # General mode commands
-│   │   └── shared/               # Cross-mode commands
-│   ├── copywriting/              # Copywriting module
-│   │   ├── database.ts           # Brand/voice/copy/templates database
-│   │   ├── copy-formatter.ts     # Multi-format export (WP, LinkedIn, MD)
-│   │   ├── section-analyzer.ts   # LLM-based copy section analysis
-│   │   ├── reference-context.ts  # Reference material injection
-│   │   └── strategies/           # Content strategies per platform
-│   ├── media-generation/         # Media generation module
-│   │   ├── providers/            # Image providers (Nano Banana, Seedream)
-│   │   ├── video-providers/      # Video providers (Kling, Veo, WAN)
-│   │   ├── prompt-engine/        # Prompt building, style presets
-│   │   ├── video-editor/         # Video processing pipeline
-│   │   └── utils/                # Storage, aspect ratios
-│   ├── scraping/                 # Web scraping infrastructure
-│   │   ├── deep-crawler.ts       # Deep crawl & link extraction
-│   │   ├── content-analyzer.ts   # Content analysis
-│   │   └── *-scraper.ts          # Platform-specific scrapers
-│   ├── modes/                    # System prompt templates (.txt)
-│   ├── knowledge/                # Knowledge bases per mode
-│   └── utils/                    # Server utilities
-├── client/                       # Frontend (React 19 + TypeScript)
-│   ├── App.tsx                   # Root component
-│   ├── components/
-│   │   ├── chat/                 # Chat interface
-│   │   ├── copywriting/          # Brand management, copy library
-│   │   │   ├── PostTypeSelector.tsx   # Template selection grid
-│   │   │   ├── TonePresetSelector.tsx # Tone preset pills
-│   │   │   └── media/            # Copy-to-media generation
-│   │   ├── media/                # Media mode
-│   │   │   ├── workflow/         # React Flow node editor
-│   │   │   │   └── nodes/        # 16 node types
-│   │   │   ├── image/            # Image gallery components
-│   │   │   ├── video/            # Video components
-│   │   │   └── assets/           # Asset management
-│   │   ├── message/              # Message rendering
-│   │   │   └── SaveToCopyLibrary.tsx  # Per-section save overlay
-│   │   ├── sidebar/              # Navigation
-│   │   ├── header/               # Header components
-│   │   └── ui/                   # Base components (Radix UI)
-│   ├── hooks/                    # Custom React hooks
-│   │   ├── useSessionAPI.ts      # Session management
-│   │   ├── useWebSocket.ts       # Real-time connection
-│   │   ├── useBrandAPI.ts        # Brand API calls
-│   │   ├── useCopyLibrary.ts     # Copy library management
-│   │   ├── useSectionAnalyzer.ts # LLM section analysis
-│   │   ├── useWorkflow.ts        # Workflow state
-│   │   ├── useWorkflowExecution.ts # Node execution
-│   │   ├── useImages.ts          # Image gallery
-│   │   ├── useVideos.ts          # Video gallery
-│   │   └── useBatchImageGeneration.ts # Batch image gen
-│   ├── lib/
-│   │   ├── fal/                  # FAL.ai client configs
-│   │   ├── video-editor/         # Client-side video pipeline
-│   │   └── stores/               # State management
-│   │       └── copywritingContext.tsx  # Brand/session state sharing
-│   └── utils/                    # Client utilities
-├── data/                         # SQLite databases
-└── dist/                         # Build output
+server/                    # Backend (Bun + WebSocket)
+├── routes/                # REST API (one file per resource)
+├── copywriting/           # Brand voice, templates, copy formatting
+├── media-generation/      # Image/video providers, prompt engine
+├── commands/              # Slash commands by mode
+└── systemPrompt.ts        # Mode-specific system prompts
+
+client/                    # Frontend (React 19)
+├── components/
+│   ├── chat/              # Chat interface
+│   ├── copywriting/       # Brand panel, copy library, templates
+│   ├── media/             # Workflow editor, galleries
+│   └── ui/                # Base components (Radix)
+├── hooks/                 # API hooks, state management
+└── lib/stores/            # Context providers
 ```
+
+## Key Patterns
+
+**API routes:** `/server/routes/` - one file per resource
+**Components:** `/client/components/` - one component per file, <300 lines
+**Hooks:** `/client/hooks/` - one hook per file, prefix with `use`
+**Slash commands:** `/server/commands/[mode]/` - one .md file per command
+
+## Design System
+
+- **Colors:** Monochrome grays with white accents (`rgba(255,255,255,0.04-0.9)`)
+- **Borders:** Subtle (`rgba(255,255,255,0.06-0.1)`), NO colored borders
+- **Hierarchy:** Content first, metadata secondary, actions tertiary
+- **Cards:** Prefer dividers over nested cards
+- **Badges:** Plain text or subtle gray pills, avoid rainbow colors
 
 ## Modes
 
-- **General** - Versatile assistant
-- **Coder** - Software engineering
-- **Spark** - Rapid brainstorming
-- **Intense-Research** - Research orchestration
-- **Copywriting** - Marketing/sales copy with brand voice
-- **Media** - Workflow-based image/video generation
-
-## Database Schema
-
-### Main Database (sessions.db)
-- `sessions` - Chat sessions
-- `messages` - Chat messages
-- `workflows` - Media workflows (nodes/edges as JSON)
-
-### Copywriting Database
-- `brands` - Brand configurations
-- `brand_voice_profiles` - Tone and language patterns
-- `brand_voice_analysis` - LLM-generated voice analysis
-- `brand_reference_materials` - Reference docs for prompt injection
-- `post_type_templates` - Content structure templates (8 defaults)
-- `brand_tone_presets` - Context-specific tone variations
-- `scraped_content` - Platform-specific content
-- `generated_copy` - Copy variations with metadata
-- `copy_sections` - Copy section breakdowns
-- `generated_images` - Image generation records
-- `engagement_metrics` - Performance tracking
-
-## Organization Rules
-
-**Modularity principles:**
-- API routes → `/server/routes`, one file per resource
-- React components → `/client/components`, one component per file
-- Slash commands → `/server/commands/[mode]`, one command per .md file
-- Workflow nodes → `/client/components/media/workflow/nodes`
-- Utilities → grouped by domain (server/utils, client/utils)
-
-**Single responsibility:**
-- Keep files focused and under 300 lines
-- Extract shared logic to utilities
-- Mode-specific features stay in mode folders
-
-## Code Quality - Zero Tolerance
-
-After editing ANY file, run ALL checks:
-
-```bash
-bunx tsc --noEmit
-bunx eslint .
-```
-
-Fix ALL errors/warnings before continuing.
-
-**Server restart (if needed):**
-```bash
-lsof -ti:3001 | xargs kill -9 2>/dev/null; bun run dev
-```
-
-Read server output and fix ALL warnings/errors.
+- General, Coder, Spark, Intense-Research, Copywriting, Media
 
 ## Key APIs
 
-### Media Generation
-- `POST /api/media/images/generate` - Generate images
-- `GET /api/media/images` - List images
-- `POST /api/media/videos/generate` - Generate videos
-- `GET /api/media/videos` - List videos
+```
+# Copywriting
+GET/POST /api/copywriting/brands
+GET/POST /api/copywriting/copy
+POST /api/copywriting/copy/save-from-chat
+GET /api/copywriting/brands/:id/tone-presets
+GET/POST /api/copywriting/brands/:id/formats
+POST /api/copywriting/brands/:id/formats/init
+PATCH /api/copywriting/formats/:id/toggle|default
 
-### Copywriting
-- `GET /api/copywriting/brands` - List brands
-- `POST /api/copywriting/brands` - Create brand
-- `GET /api/copywriting/copy` - List generated copy
-- `POST /api/copywriting/copy/save-from-chat` - Save chat content to library
-- `GET /api/copywriting/templates` - List content templates
-- `POST /api/copywriting/brands/:id/templates` - Create brand template
-- `GET /api/copywriting/brands/:id/tone-presets` - List tone presets
-- `POST /api/copywriting/brands/:id/tone-presets/auto-generate` - Generate defaults
+# Media
+POST /api/media/images/generate
+GET /api/media/images
+POST /api/media/videos/generate
 
-### Workflows
-- `GET /api/workflows` - List workflows
-- `POST /api/workflows` - Create workflow
-- `PUT /api/workflows/:id` - Update workflow
-- `DELETE /api/workflows/:id` - Delete workflow
+# Workflows
+GET/POST/PUT/DELETE /api/workflows
+```
 
-## Key UI Components
+## Copywriting Context Flow
 
-### Copy Library (`CopyLibraryPanel`)
-- Right-side panel in copywriting mode with search and filters
-- Multi-format export: WordPress HTML, LinkedIn, Markdown, Plain text
-- Section breakdown with visual concept suggestions
-- Batch image generation for multiple sections
-- Links images to copy sections
+1. User selects brand → `CopywritingContext.brandId`
+2. User selects content formats → `CopywritingContext.contentFormatIds` (multi-select)
+3. User selects template → `CopywritingContext.templateId`
+4. User selects tone preset → `CopywritingContext.tonePresetId`
+5. Context passed via WebSocket → `systemPrompt.ts` injects into prompt
 
-### Save to Library (`SaveToCopyLibrary`)
-- Hover overlay on chat messages in copywriting mode
-- Auto-detects copy sections using patterns:
-  - `## POST 1:`, `## POST 2:` headings
-  - `## Variation 1:`, `## Variatie 1:` (Dutch)
-  - Markdown horizontal rules `---`
-  - Explicit `<!-- copy-section -->` markers
-- Per-section save buttons + "Save All" option
-- Brand context auto-passed to LLM via `CopywritingContext`
+## Database
 
-### Copy Format API
-- `GET /api/copywriting/copy/item/:id/formatted` - Get all formats
-- `GET /api/copywriting/copy/item/:id/format/:format` - Get specific format
-- Formats: `wordpress`, `linkedin`, `markdown`, `raw`
+**Main (sessions.db):** sessions, messages, workflows
 
-### Image Gallery (`ImageCard`)
-- Provider badges (Nano Banana, Seedream, etc.)
-- Aspect ratio indicators (Square, Wide, Portrait)
-- Favorite markers and status indicators
-- Hover actions: edit, download, delete
-
-### Media Workflow (`WorkflowCanvas`)
-- React Flow-based node editor
-- 16 node types for image/video generation
-- Real-time execution status
-- Save/load workflow presets
+**Copywriting:** brands, brand_voice_profiles, brand_voice_analysis, post_type_templates, brand_tone_presets, brand_content_formats, generated_copy, copy_sections, generated_images
