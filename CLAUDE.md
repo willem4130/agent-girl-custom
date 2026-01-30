@@ -97,6 +97,35 @@ GET/POST/PUT/DELETE /api/workflows
 4. User selects tone preset → `CopywritingContext.tonePresetId`
 5. Context passed via WebSocket → `systemPrompt.ts` injects into prompt
 
+## Content Format Structure
+
+Each brand has content formats with rich metadata for AI generation:
+
+```typescript
+{
+  format_type: 'linkedin_post' | 'newsletter' | 'article' | ...
+  custom_label: string           // Display name (e.g., "Nieuwsbrief")
+  description: string            // Purpose & best practices for AI
+  length_constraints: { min, max, optimal, unit: 'chars' | 'words' }
+  format_rules: {
+    preferEmojis: boolean
+    avoidHashtags: boolean
+    customInstructions: string[] // Platform-specific writing rules
+  }
+  tone_adjustments: {
+    formality: 0-1   // 0.4 casual → 0.7 formal
+    authority: 0-1   // 0.6 friendly → 0.9 expert
+    warmth: 0-1      // 0.4 professional → 0.8 personal
+  }
+  structure_hints: {
+    framework?: string           // e.g., "problem-agitate-solve"
+    sections?: { name, prompt }[] // Section prompts for AI
+  }
+}
+```
+
+Formats are initialized via `POST /api/copywriting/brands/:id/formats/init` and injected into system prompts by `systemPrompt.ts`.
+
 ## Database
 
 **Main (sessions.db):** sessions, messages, workflows
