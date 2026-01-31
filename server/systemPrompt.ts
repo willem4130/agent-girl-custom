@@ -76,39 +76,72 @@ Spawn 5+ agents in parallel. Delegate ALL research. Cross-reference findings. Sy
 
     'copywriting': `You are Agent Girl${userName ? ` crafting copy for ${userName}` : ''}, a world-class copywriter.
 
+CRITICAL: OUTPUT IN CHAT, NOT FILES
+- ALWAYS show the generated copy directly in the chat message
+- NEVER save copy to files unless the user explicitly asks to save
+- The user wants to see and review the copy in the conversation first
+
+CONVERSATIONAL WORKFLOW:
+1. When the user asks for copy, first ask 2-3 short questions to understand:
+   - What's the topic/subject?
+   - What's the goal? (inform, sell, engage, announce)
+   - Any specific angle or message?
+2. Keep questions brief and natural - one message, not a formal questionnaire
+3. After getting answers, generate the copy and SHOW IT DIRECTLY IN CHAT
+4. Accept feedback and iterate naturally
+
+CONSISTENCY WITH TOP PERFORMERS:
+- If top-performing LinkedIn posts are provided in context, study their structure, hooks, and tone
+- Mimic the patterns that got high engagement (opening hooks, paragraph rhythm, CTA style)
+- Don't copy verbatim, but use them as stylistic reference
+
+OUTPUT FORMATTING (CRITICAL - ALWAYS FOLLOW):
+You MUST add blank lines between paragraphs. Never write wall-of-text.
+
+CORRECT format:
+"""
+**Headline here**
+
+First paragraph with the hook or problem statement.
+
+Second paragraph with more context or the solution.
+
+Third paragraph with proof or details.
+
+Call to action here.
+"""
+
+WRONG format (never do this):
+"""
+**Headline here**
+First paragraph with the hook.
+Second paragraph immediately after.
+Third paragraph no spacing.
+"""
+
+Also:
+- Separate sections with blank lines
+- Use **bold** for subheadings within the copy
+- When presenting variations, use clear headers (### Variant 1, ### Variant 2)
+
 CORE PRINCIPLES:
 - Mirror brand tone exactly using voice profile when available
-- Use proven frameworks: PAS, AIDA, BAB, Hook-Story-Insight
-- Generate 3-5 variations per request with different approaches
-- Apply psychological triggers: curiosity, specificity, authority, social proof
 - Match user's language natively (Dutch or English)
-- NO AI jargon: avoid "leverage", "unlock", "dive deep", "game-changer"
-- YES: contractions (you're, we've), specifics, authentic voice
-- Self-evaluate against quality gates before delivery
-
-HUMAN-IN-THE-LOOP WORKFLOW:
-1. If brief is unclear, ask 2-3 clarifying questions before generating
-2. Present variations with framework explanations
-3. Accept feedback naturally in conversation
-4. Iterate until approved
+- NO AI jargon: avoid "leverage", "unlock", "dive deep", "game-changer", "innovatief", "revolutionair"
+- YES: contractions, specifics, authentic voice
+- Apply the brand's preferred terminology from vocabulary preferences
 
 CONTENT TYPE STRATEGIES:
-- LinkedIn: Professional, thought leadership, 1200 chars optimal, end with question
+- LinkedIn: Professional, 1200 chars optimal, end with question or CTA
 - Instagram: Visual-first, casual, emoji-friendly, 200 chars optimal
-- Facebook: Community-focused, conversational, short (150 chars optimal)
-- Article: SEO-optimized, subheadings every 300 words, 1500 words optimal
 - Newsletter: Personal tone, one big idea, clear CTA
+- Article: Subheadings every 300 words, 1500 words optimal
 
-SELF-INSTRUCTION INTEGRATION:
-When brand voice analysis is available, follow the generated writing guidelines as instructions to yourself. Apply tone adjustments relative to brand baseline for each platform.
-
-QUALITY GATES (check before delivery):
-- Matches brand voice profile scores
+QUALITY GATES:
+- Matches brand voice profile
 - No AI jargon or generic phrases
 - Platform-appropriate length
-- Clear CTA (if required by content type)
-- Psychological trigger clearly applied
-- Quality self-score: aim for 8+/10`,
+- Clear structure with paragraph breaks`,
   };
 
   return modePrompts[mode] || modePrompts['general'];
@@ -155,6 +188,7 @@ export function injectWorkingDirIntoAgents(
  */
 export interface CopywritingContext {
   brandId?: string;
+  sessionId?: string; // For session-specific reference materials
   contentTypes?: Array<{
     id: string;
     label: string;
@@ -173,14 +207,14 @@ export interface CopywritingContext {
  * Get system prompt based on provider and available agents
  * Includes background process instructions and provider-specific features
  */
-export function getSystemPrompt(
+export async function getSystemPrompt(
   provider: ProviderType,
   agents?: Record<string, AgentDefinition>,
   userConfig?: UserConfig,
   timezone?: string,
   mode?: string,
   copywritingContext?: CopywritingContext
-): string {
+): Promise<string> {
   // Start with mode-specific base personality (replaces generic base + mode override)
   let prompt = buildModePrompt(mode || 'general', userConfig);
 
@@ -214,26 +248,161 @@ export function getSystemPrompt(
   if ((mode === 'copywriting' || mode === 'media') && copywritingContext) {
     prompt += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📝 CONTENT CREATION CONTEXT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+You have access to TWO types of context:
+
+1. 🏢 BRAND GUIDELINES (below) - Tone of voice, writing style, vocabulary, and example content.
+   → ALWAYS apply these to maintain consistent brand voice across ALL content.
+
+2. 📁 REFERENCE MATERIALS (.references/ folder) - Topic-specific source material for THIS post.
+   → Use the Read tool to access files in .references/ for the specific subject matter.
+   → These contain the WHAT (topic/content), brand guidelines define the HOW (voice/style).`;
 
     if (copywritingContext.brandId) {
-      prompt += `\n\nSELECTED BRAND ID: ${copywritingContext.brandId}
+      const brandId = copywritingContext.brandId;
 
-BRAND VOICE ENDPOINTS (fetch these before generating content):
-1. GET /api/copywriting/brands/${copywritingContext.brandId}/voice-analysis/instructions
-   → Concise writing instructions derived from LLM analysis of brand content
+      // Get brand config
+      const brand = copywritingDb.getBrandConfig(brandId);
+      if (brand) {
+        prompt += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏢 BRAND GUIDELINES: ${brand.name}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Apply these guidelines to ALL content for this brand.`;
+        if (brand.website_url) prompt += `\nWebsite: ${brand.website_url}`;
+        if (brand.linkedin_url) prompt += `\nLinkedIn: ${brand.linkedin_url}`;
+        if (brand.instagram_url) prompt += `\nInstagram: ${brand.instagram_url}`;
+      }
 
-2. GET /api/copywriting/brands/${copywritingContext.brandId}/voice-analysis
-   → Full voice analysis: voice description, example hooks, vocabulary preferences, writing guidelines
+      // Get voice analysis (LLM-generated guidelines)
+      const voiceAnalysis = copywritingDb.getVoiceAnalysis(brandId);
+      if (voiceAnalysis) {
+        prompt += `\n\n📣 VOICE & TONE:`;
 
-3. GET /api/copywriting/voice/${copywritingContext.brandId}
-   → Tone dimensions (formality, humor, energy, authority scores)
+        if (voiceAnalysis.voice_description) {
+          prompt += `\n\n${voiceAnalysis.voice_description}`;
+        }
 
-Use endpoint #1 for quick context, #2 for detailed guidelines when crafting content.`;
+        if (voiceAnalysis.generated_guidelines) {
+          prompt += `\n\n🎯 WRITING INSTRUCTIONS:\n${voiceAnalysis.generated_guidelines}`;
+        }
 
-      // Inject reference materials (enabled by default)
-      if (copywritingContext.includeReferences !== false) {
-        const refContext = buildReferenceContext(copywritingContext.brandId, {
+        // Parse and include example hooks
+        const hooks = typeof voiceAnalysis.example_hooks === 'string'
+          ? JSON.parse(voiceAnalysis.example_hooks || '[]')
+          : voiceAnalysis.example_hooks || [];
+        if (hooks.length > 0) {
+          prompt += `\n\n💡 EXAMPLE HOOKS FROM BRAND CONTENT:`;
+          hooks.slice(0, 5).forEach((hook: string) => {
+            prompt += `\n• "${hook}"`;
+          });
+        }
+
+        // Parse and include vocabulary preferences
+        const vocab = typeof voiceAnalysis.vocabulary_preferences === 'string'
+          ? JSON.parse(voiceAnalysis.vocabulary_preferences || '{}')
+          : voiceAnalysis.vocabulary_preferences || {};
+        if (vocab.preferredTerms && vocab.preferredTerms.length > 0) {
+          prompt += `\n\n✅ PREFERRED TERMS: ${vocab.preferredTerms.slice(0, 15).join(', ')}`;
+        }
+        if (vocab.avoidTerms && vocab.avoidTerms.length > 0) {
+          prompt += `\n❌ AVOID: ${vocab.avoidTerms.slice(0, 10).join(', ')}`;
+        }
+      }
+
+      // Get voice profile (tone scores)
+      const voiceProfile = copywritingDb.getCurrentVoiceProfile(brandId);
+      if (voiceProfile) {
+        prompt += `\n\n📊 TONE DIMENSIONS:`;
+        prompt += `\n• Formality: ${voiceProfile.formality_score}/100`;
+        prompt += `\n• Authority: ${voiceProfile.authority_score}/100`;
+        prompt += `\n• Energy: ${voiceProfile.energy_score}/100`;
+        prompt += `\n• Humor: ${voiceProfile.humor_score}/100`;
+      }
+
+      // Inject ALL scraped pages content (full context, not summarized)
+      const scrapedPages = copywritingDb.getScrapedPages(brandId);
+      if (scrapedPages.length > 0) {
+        prompt += `\n\n📄 BRAND WEBSITE CONTENT (${scrapedPages.length} pages)
+Use this to understand the brand's services, terminology, and messaging:`;
+
+        // Sort by word count (most content first) and include all pages
+        const sortedPages = [...scrapedPages].sort((a, b) => (b.word_count || 0) - (a.word_count || 0));
+
+        for (const page of sortedPages) {
+          // Parse extracted content
+          const content = typeof page.extracted_content === 'string'
+            ? JSON.parse(page.extracted_content)
+            : page.extracted_content;
+
+          prompt += `\n\n--- ${page.url} [${page.page_type}] ---`;
+
+          // Add title
+          if (content.meta?.title) {
+            prompt += `\nTitle: ${content.meta.title}`;
+          }
+          if (content.meta?.description) {
+            prompt += `\nDescription: ${content.meta.description}`;
+          }
+
+          // Add headings
+          if (content.headings) {
+            if (content.headings.h1?.length > 0) {
+              prompt += `\n\nH1: ${content.headings.h1.join(' | ')}`;
+            }
+            if (content.headings.h2?.length > 0) {
+              prompt += `\nH2: ${content.headings.h2.join(' | ')}`;
+            }
+            if (content.headings.h3?.length > 0) {
+              prompt += `\nH3: ${content.headings.h3.join(' | ')}`;
+            }
+          }
+
+          // Add paragraphs (the actual content)
+          if (content.paragraphs && content.paragraphs.length > 0) {
+            prompt += `\n\nContent:\n${content.paragraphs.join('\n')}`;
+          }
+        }
+      }
+
+      // Also include scraped social media content with engagement highlighting
+      const scrapedContent = copywritingDb.getScrapedContent(brandId);
+      const socialContent = scrapedContent.filter(c => c.platform !== 'website');
+
+      // Check for LinkedIn content with engagement metrics
+      const linkedinContent = socialContent.find(c => c.platform === 'linkedin');
+      if (linkedinContent) {
+        const metadata = typeof linkedinContent.metadata === 'string'
+          ? JSON.parse(linkedinContent.metadata || '{}')
+          : linkedinContent.metadata || {};
+
+        prompt += `\n\n🏆 TOP PERFORMING LINKEDIN POSTS
+Mimic this tone, structure, and style - these posts got the most engagement:
+`;
+
+        if (metadata.engagementMetrics?.topPosts) {
+          for (const post of metadata.engagementMetrics.topPosts.slice(0, 5)) {
+            prompt += `\n🔥 [${post.likes} likes, ${post.comments} comments, ${post.shares} reposts]\n${post.text}\n`;
+          }
+        } else {
+          // Fallback to raw content which includes top posts
+          prompt += `\n${linkedinContent.raw_content}`;
+        }
+      }
+
+      // Include other social content
+      const otherSocial = socialContent.filter(c => c.platform !== 'linkedin');
+      if (otherSocial.length > 0) {
+        prompt += `\n\n📱 OTHER SOCIAL MEDIA CONTENT:`;
+
+        for (const content of otherSocial.slice(0, 10)) {
+          prompt += `\n\n[${content.platform.toUpperCase()}]:\n${content.raw_content}`;
+        }
+      }
+
+      // Inject brand reference materials (if no session references)
+      if (copywritingContext.includeReferences !== false && !copywritingContext.sessionId) {
+        const refContext = await buildReferenceContext(brandId, {
           tags: copywritingContext.referenceTags,
         });
         if (refContext.content) {
@@ -241,6 +410,21 @@ Use endpoint #1 for quick context, #2 for detailed guidelines when crafting cont
         }
       }
     }
+
+    // Tell AI about reference files in the working directory
+    // Files are saved to .references/ folder - AI reads them directly with Read tool
+    // This is simpler and has no size limits compared to prompt injection
+    prompt += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 TOPIC-SPECIFIC REFERENCE MATERIALS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The .references/ folder contains source material for the SPECIFIC TOPIC of this content.
+Use the Read tool to access these files - they contain the subject matter to write about.
+
+CRITICAL: Read the ENTIRE file. Do NOT use limit parameter. Do NOT skip content.
+These files are pre-filtered reference materials - read them completely.
+
+Reference materials = WHAT to write about (topic, facts, details)
+Brand guidelines = HOW to write it (tone, style, vocabulary)`;
 
     // Inject template structure if selected
     if (copywritingContext.templateId) {

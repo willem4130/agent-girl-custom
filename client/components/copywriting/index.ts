@@ -12,6 +12,7 @@ export { ContentTypeSelector, ContentTypeBadge, getContentTypeConfig, getContent
 export type { ContentType } from './ContentTypeSelector';
 export { ReferenceMaterialsPanel } from './ReferenceMaterialsPanel';
 export type { ReferenceMaterial, MaterialType } from './ReferenceMaterialsPanel';
+export { SessionReferenceMaterialsPanel } from './SessionReferenceMaterialsPanel';
 export { CopywritingWizard } from './CopywritingWizard';
 export type { BriefingData, WizardResult } from './CopywritingWizard';
 export { MediaGenerationPanel } from './media/MediaGenerationPanel';

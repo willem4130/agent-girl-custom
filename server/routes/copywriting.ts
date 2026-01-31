@@ -8,6 +8,7 @@
  */
 
 import { copywritingDb } from '../copywriting/database';
+import { sessionDb } from '../database';
 import {
   scrapeInstagramProfile,
   scrapeInstagramPosts,
@@ -44,6 +45,8 @@ import {
   type CopyFormat,
   type FormattedCopy,
 } from '../copywriting/copy-formatter';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Handle copywriting-related API routes
@@ -1100,11 +1103,19 @@ export async function handleCopywritingRoutes(
         content: string;
         sourceUrl?: string;
         tags?: string[];
+        // File reference fields
+        filePath?: string;
+        isFolder?: boolean;
+        folderDepth?: number;
+        filePatterns?: string[];
       };
 
-      if (!body.materialType || !body.title || !body.content) {
+      // For file/project types with filePath, content can be empty (will be read fresh)
+      const isFileRef = (body.materialType === 'file' || body.materialType === 'project') && body.filePath;
+
+      if (!body.materialType || !body.title || (!body.content && !isFileRef)) {
         return jsonResponse(
-          { error: 'materialType, title, and content are required' },
+          { error: 'materialType, title, and content (or filePath for file types) are required' },
           400
         );
       }
@@ -1112,9 +1123,13 @@ export async function handleCopywritingRoutes(
       const reference = copywritingDb.addReferenceMaterial(brandId, {
         materialType: body.materialType,
         title: body.title,
-        content: body.content,
+        content: body.content || '', // Empty for file refs - read fresh on use
         sourceUrl: body.sourceUrl,
         tags: body.tags,
+        filePath: body.filePath,
+        isFolder: body.isFolder,
+        folderDepth: body.folderDepth,
+        filePatterns: body.filePatterns,
       });
 
       return jsonResponse(reference, 201);
@@ -1967,8 +1982,455 @@ export async function handleCopywritingRoutes(
     }
   }
 
+  // ============================================================================
+  // SESSION REFERENCE MATERIALS ENDPOINTS (Session-specific, not brand-specific)
+  // ============================================================================
+
+  // POST /api/sessions/:sessionId/references - Add reference material to session
+  const sessionRefAddMatch = pathname.match(
+    /^\/api\/sessions\/([^/]+)\/references$/
+  );
+  if (sessionRefAddMatch && req.method === 'POST') {
+    try {
+      const sessionId = sessionRefAddMatch[1];
+      const body = (await req.json()) as {
+        materialType: 'url' | 'file' | 'text' | 'project';
+        title: string;
+        content: string;
+        sourceUrl?: string;
+        tags?: string[];
+        filePath?: string;
+        isFolder?: boolean;
+        folderDepth?: number;
+        filePatterns?: string[];
+      };
+
+      const isFileRef = (body.materialType === 'file' || body.materialType === 'project') && body.filePath;
+
+      if (!body.materialType || !body.title || (!body.content && !isFileRef)) {
+        return jsonResponse(
+          { error: 'materialType, title, and content (or filePath for file types) are required' },
+          400
+        );
+      }
+
+      // Get session to find working directory
+      const session = sessionDb.getSession(sessionId);
+      let savedFilePath: string | undefined;
+
+      // SAVE FILE TO WORKING DIRECTORY so AI can read it with Read tool
+      if (session?.working_directory && body.content && body.materialType === 'file') {
+        const referencesDir = path.join(session.working_directory, '.references');
+
+        // Create .references folder if it doesn't exist
+        if (!fs.existsSync(referencesDir)) {
+          fs.mkdirSync(referencesDir, { recursive: true });
+          console.log('📁 Created references directory:', referencesDir);
+        }
+
+        // Sanitize filename
+        const sanitizedTitle = body.title.replace(/[^a-zA-Z0-9_\-.]/g, '_');
+        const ext = body.title.includes('.') ? '' : '.txt';
+        const fileName = sanitizedTitle + ext;
+        savedFilePath = path.join(referencesDir, fileName);
+
+        // Write file content
+        fs.writeFileSync(savedFilePath, body.content, 'utf-8');
+        console.log('📄 Saved reference file:', savedFilePath, `(${body.content.length} chars)`);
+      }
+
+      const reference = copywritingDb.addSessionReferenceMaterial(sessionId, {
+        materialType: body.materialType,
+        title: body.title,
+        content: body.content || '',
+        sourceUrl: body.sourceUrl,
+        tags: body.tags,
+        // Store the saved file path so we know where it was written
+        filePath: savedFilePath || body.filePath,
+        isFolder: body.isFolder,
+        folderDepth: body.folderDepth,
+        filePatterns: body.filePatterns,
+      });
+
+      return jsonResponse({ ...reference, savedFilePath }, 201);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/sessions/:sessionId/references - List reference materials for session
+  if (sessionRefAddMatch && req.method === 'GET') {
+    try {
+      const materialType = url.searchParams.get('type') || undefined;
+      const references = copywritingDb.getSessionReferenceMaterials(
+        sessionRefAddMatch[1],
+        materialType
+      );
+      return jsonResponse({ references });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // DELETE /api/sessions/:sessionId/references - Delete all references for session
+  if (sessionRefAddMatch && req.method === 'DELETE') {
+    try {
+      const success = copywritingDb.deleteSessionReferenceMaterials(sessionRefAddMatch[1]);
+      return jsonResponse({ success });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // DELETE /api/sessions/:sessionId/references/:refId - Delete specific reference
+  const sessionRefDeleteMatch = pathname.match(
+    /^\/api\/sessions\/([^/]+)\/references\/([^/]+)$/
+  );
+  if (sessionRefDeleteMatch && req.method === 'DELETE') {
+    try {
+      const success = copywritingDb.deleteSessionReferenceMaterial(sessionRefDeleteMatch[2]);
+      return jsonResponse({ success });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/sessions/:sessionId/references/copy-from-brand/:brandId - Copy brand refs to session
+  const sessionRefCopyMatch = pathname.match(
+    /^\/api\/sessions\/([^/]+)\/references\/copy-from-brand\/([^/]+)$/
+  );
+  if (sessionRefCopyMatch && req.method === 'POST') {
+    try {
+      const sessionId = sessionRefCopyMatch[1];
+      const brandId = sessionRefCopyMatch[2];
+
+      const copiedRefs = copywritingDb.copyBrandRefsToSession(brandId, sessionId);
+
+      return jsonResponse({
+        success: true,
+        copied: copiedRefs.length,
+        references: copiedRefs,
+      });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // ============================================================================
+  // FILE REFERENCE ENDPOINTS
+  // ============================================================================
+
+  // POST /api/copywriting/files/read - Read file or folder contents
+  if (pathname === '/api/copywriting/files/read' && req.method === 'POST') {
+    try {
+      const body = (await req.json()) as {
+        path: string;
+        isFolder?: boolean;
+        folderDepth?: number;
+        filePatterns?: string[];
+      };
+
+      if (!body.path) {
+        return jsonResponse({ error: 'path is required' }, 400);
+      }
+
+      const result = await readFileReference(body.path, {
+        isFolder: body.isFolder ?? false,
+        folderDepth: body.folderDepth ?? 3,
+        filePatterns: body.filePatterns ?? [],
+      });
+
+      return jsonResponse(result);
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
   // Route not handled
   return undefined;
+}
+
+// ============================================================================
+// FILE REFERENCE HELPERS
+// ============================================================================
+
+// Security: Patterns to exclude from file reading
+const EXCLUDED_PATTERNS = [
+  '.env',
+  '.env.*',
+  'node_modules',
+  '.git',
+  '.gitignore',
+  '*.pem',
+  '*.key',
+  '*credentials*',
+  '*secret*',
+  '*.sqlite',
+  '*.db',
+  'package-lock.json',
+  'bun.lockb',
+];
+
+// Supported file extensions for reading
+const SUPPORTED_EXTENSIONS = [
+  '.md',
+  '.txt',
+  '.json',
+  '.yaml',
+  '.yml',
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.css',
+  '.html',
+  '.xml',
+  '.csv',
+];
+
+// Size limits
+const PER_FILE_LIMIT = 50000; // 50KB per file
+const TOTAL_FOLDER_LIMIT = 100000; // 100KB total for folders
+
+interface FileReadResult {
+  success: boolean;
+  files: Array<{
+    path: string;
+    name: string;
+    content: string;
+    size: number;
+    truncated: boolean;
+  }>;
+  totalSize: number;
+  totalFiles: number;
+  truncatedFiles: number;
+  skippedFiles: string[];
+  error?: string;
+}
+
+/**
+ * Check if a path/file should be excluded based on security patterns
+ */
+function isExcludedPath(filePath: string): boolean {
+  const normalizedPath = filePath.toLowerCase();
+  const fileName = path.basename(filePath).toLowerCase();
+
+  for (const pattern of EXCLUDED_PATTERNS) {
+    // Handle glob-like patterns
+    if (pattern.startsWith('*') && pattern.endsWith('*')) {
+      // *contains*
+      const search = pattern.slice(1, -1);
+      if (fileName.includes(search) || normalizedPath.includes(search)) {
+        return true;
+      }
+    } else if (pattern.startsWith('*')) {
+      // *.extension
+      if (fileName.endsWith(pattern.slice(1))) {
+        return true;
+      }
+    } else if (pattern.endsWith('*')) {
+      // prefix*
+      if (fileName.startsWith(pattern.slice(0, -1))) {
+        return true;
+      }
+    } else {
+      // Exact match
+      if (fileName === pattern || normalizedPath.includes(`/${pattern}/`) || normalizedPath.includes(`/${pattern}`)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if a file has a supported extension
+ */
+function isSupportedFile(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  return SUPPORTED_EXTENSIONS.includes(ext);
+}
+
+/**
+ * Match file against glob patterns (simple implementation)
+ */
+function matchesPatterns(filePath: string, patterns: string[]): boolean {
+  if (patterns.length === 0) return true; // No patterns = match all
+
+  const fileName = path.basename(filePath).toLowerCase();
+  const ext = path.extname(filePath).toLowerCase();
+
+  for (const pattern of patterns) {
+    const normalizedPattern = pattern.toLowerCase();
+
+    // Handle *.ext pattern
+    if (normalizedPattern.startsWith('*.')) {
+      const patternExt = normalizedPattern.slice(1);
+      if (ext === patternExt) return true;
+    }
+    // Handle exact filename
+    else if (fileName === normalizedPattern) {
+      return true;
+    }
+    // Handle **/*.ext pattern (recursive)
+    else if (normalizedPattern.startsWith('**/')) {
+      const remainder = normalizedPattern.slice(3);
+      if (remainder.startsWith('*.')) {
+        const patternExt = remainder.slice(1);
+        if (ext === patternExt) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Recursively get all files in a directory
+ */
+async function getFilesRecursive(
+  dirPath: string,
+  depth: number,
+  maxDepth: number,
+  patterns: string[]
+): Promise<string[]> {
+  if (depth > maxDepth) return [];
+
+  const files: string[] = [];
+
+  try {
+    const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+
+      // Skip excluded paths
+      if (isExcludedPath(fullPath)) continue;
+
+      if (entry.isDirectory()) {
+        const subFiles = await getFilesRecursive(fullPath, depth + 1, maxDepth, patterns);
+        files.push(...subFiles);
+      } else if (entry.isFile()) {
+        // Check if file is supported and matches patterns
+        if (isSupportedFile(fullPath) && matchesPatterns(fullPath, patterns)) {
+          files.push(fullPath);
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`Error reading directory ${dirPath}:`, error);
+  }
+
+  return files;
+}
+
+/**
+ * Read file reference (single file or folder)
+ */
+async function readFileReference(
+  filePath: string,
+  options: {
+    isFolder: boolean;
+    folderDepth: number;
+    filePatterns: string[];
+  }
+): Promise<FileReadResult> {
+  const result: FileReadResult = {
+    success: false,
+    files: [],
+    totalSize: 0,
+    totalFiles: 0,
+    truncatedFiles: 0,
+    skippedFiles: [],
+  };
+
+  // Security check on the base path
+  if (isExcludedPath(filePath)) {
+    result.error = 'Path is excluded for security reasons';
+    return result;
+  }
+
+  try {
+    const stats = await fs.promises.stat(filePath);
+
+    if (options.isFolder || stats.isDirectory()) {
+      // Read folder
+      const filePaths = await getFilesRecursive(
+        filePath,
+        1,
+        options.folderDepth,
+        options.filePatterns
+      );
+
+      for (const fp of filePaths) {
+        // Check if we've exceeded total limit
+        if (result.totalSize >= TOTAL_FOLDER_LIMIT) {
+          result.skippedFiles.push(`${fp} (total size limit exceeded)`);
+          continue;
+        }
+
+        try {
+          const fileStats = await fs.promises.stat(fp);
+          let content = await fs.promises.readFile(fp, 'utf-8');
+          let truncated = false;
+
+          // Truncate if file is too large
+          if (content.length > PER_FILE_LIMIT) {
+            content = content.slice(0, PER_FILE_LIMIT) + '\n\n[...truncated, file exceeds 50KB limit]';
+            truncated = true;
+            result.truncatedFiles++;
+          }
+
+          result.files.push({
+            path: fp,
+            name: path.basename(fp),
+            content,
+            size: fileStats.size,
+            truncated,
+          });
+
+          result.totalSize += content.length;
+          result.totalFiles++;
+        } catch {
+          result.skippedFiles.push(`${fp} (read error)`);
+        }
+      }
+
+      result.success = true;
+    } else {
+      // Read single file
+      if (!isSupportedFile(filePath)) {
+        result.error = `File type not supported. Supported: ${SUPPORTED_EXTENSIONS.join(', ')}`;
+        return result;
+      }
+
+      let content = await fs.promises.readFile(filePath, 'utf-8');
+      let truncated = false;
+
+      if (content.length > PER_FILE_LIMIT) {
+        content = content.slice(0, PER_FILE_LIMIT) + '\n\n[...truncated, file exceeds 50KB limit]';
+        truncated = true;
+        result.truncatedFiles = 1;
+      }
+
+      result.files.push({
+        path: filePath,
+        name: path.basename(filePath),
+        content,
+        size: stats.size,
+        truncated,
+      });
+
+      result.totalSize = content.length;
+      result.totalFiles = 1;
+      result.success = true;
+    }
+  } catch (error) {
+    result.error = error instanceof Error ? error.message : 'Failed to read path';
+  }
+
+  return result;
 }
 
 // ============================================================================
@@ -2051,21 +2513,57 @@ async function scrapePlatform(
         const companyId = extractLinkedInCompanyId(url);
         const [company, posts] = await Promise.all([
           scrapeLinkedInCompany(companyId),
-          scrapeLinkedInPosts(companyId, 20),
+          scrapeLinkedInPosts(companyId, 30),
         ]);
 
+        // Sort posts by engagement (likes + comments + shares)
+        const sortedPosts = [...posts].sort((a, b) => {
+          const engagementA = (a.likes || 0) + (a.comments || 0) * 2 + (a.shares || 0) * 3;
+          const engagementB = (b.likes || 0) + (b.comments || 0) * 2 + (b.shares || 0) * 3;
+          return engagementB - engagementA;
+        });
+
+        // Include engagement metrics in the content for top posts
         const content = [
           `Tagline: ${company.tagline}`,
           `Description: ${company.description}`,
-          ...posts.map((p) => `Post: ${p.text}`),
+          '',
+          '=== TOP PERFORMING POSTS (by engagement) ===',
+          ...sortedPosts.slice(0, 10).map((p, i) => {
+            const engagement = `[${p.likes} likes, ${p.comments} comments, ${p.shares} reposts]`;
+            return `#${i + 1} ${engagement}\n${p.text}`;
+          }),
+          '',
+          '=== OTHER RECENT POSTS ===',
+          ...sortedPosts.slice(10).map((p) => `Post: ${p.text}`),
         ].join('\n\n');
+
+        // Store detailed engagement metrics
+        const engagementMetrics = {
+          topPosts: sortedPosts.slice(0, 10).map(p => ({
+            text: p.text,
+            likes: p.likes,
+            comments: p.comments,
+            shares: p.shares,
+            url: p.url,
+            totalEngagement: (p.likes || 0) + (p.comments || 0) * 2 + (p.shares || 0) * 3,
+          })),
+          avgEngagement: posts.length > 0
+            ? posts.reduce((sum, p) => sum + (p.likes || 0) + (p.comments || 0), 0) / posts.length
+            : 0,
+        };
 
         return {
           platform,
           success: true,
           content,
           contentType: 'company+posts',
-          metadata: { companyId: company.id, followers: company.followers, postsScraped: posts.length },
+          metadata: {
+            companyId: company.id,
+            followers: company.followers,
+            postsScraped: posts.length,
+            engagementMetrics,
+          },
         };
       }
 

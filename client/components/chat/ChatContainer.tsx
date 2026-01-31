@@ -34,7 +34,7 @@ import { ScrollButton } from './ScrollButton';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSessionAPI, type Session } from '../../hooks/useSessionAPI';
 import { Menu, Edit3, PanelRightOpen, PanelRightClose, FolderOpen } from 'lucide-react';
-import { CopyLibraryPanel } from '../copywriting';
+import { CopyLibraryPanel, SessionReferenceMaterialsPanel } from '../copywriting';
 import { useBrandAPI } from '../../hooks/useBrandAPI';
 import { useCopywritingContext } from '../../lib/stores/copywritingContext';
 import type { Message } from '../message/types';
@@ -1184,11 +1184,13 @@ export function ChatContainer() {
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
       // Build copywriting context - use provided context or auto-generate from current state
+      // ALWAYS include sessionId in copywriting/media mode so session reference materials are loaded
       const effectiveMode = mode || currentSessionMode;
       const effectiveCopywritingContext = copywritingContextArg || (
-        (effectiveMode === 'copywriting' || effectiveMode === 'media') && selectedBrandId
+        (effectiveMode === 'copywriting' || effectiveMode === 'media')
           ? {
-              brandId: selectedBrandId,
+              brandId: selectedBrandId || undefined,
+              sessionId: sessionId, // CRITICAL: Always include for session reference materials
               contentFormatIds: copywritingContext.contentFormatIds?.length ? copywritingContext.contentFormatIds : undefined,
               templateId: copywritingContext.templateId || undefined,
               tonePresetId: copywritingContext.tonePresetId || undefined,
@@ -1423,6 +1425,7 @@ export function ChatContainer() {
               onModeChange={setCurrentSessionMode}
               sessionId={currentSessionId || undefined}
               pendingMessagesCount={pendingMessages.length}
+              selectedBrandId={selectedBrandId}
             />
             {/* Copy Library Panel - Right sidebar for copywriting mode */}
             {currentSessionMode === 'copywriting' && (
@@ -1451,6 +1454,29 @@ export function ChatContainer() {
                       scrollbarColor: 'rgba(255,255,255,0.2) transparent',
                     }}
                   >
+                    {/* Session Reference Materials - creates session lazily when needed */}
+                    <div style={{ marginBottom: '16px' }}>
+                      <SessionReferenceMaterialsPanel
+                        sessionId={currentSessionId || undefined}
+                        brandId={selectedBrandId || undefined}
+                        onCreateSession={async () => {
+                          // Create session with copywriting mode
+                          const newSession = await sessionAPI.createSession(undefined, 'copywriting');
+                          if (newSession) {
+                            await loadSessions();
+                            return newSession.id;
+                          }
+                          return null;
+                        }}
+                        onSessionCreated={(newSessionId) => {
+                          setCurrentSessionId(newSessionId);
+                          // Only change mode if different - prevents useEffect re-trigger
+                          if (currentSessionMode !== 'copywriting') {
+                            setCurrentSessionMode('copywriting');
+                          }
+                        }}
+                      />
+                    </div>
                     <CopyLibraryPanel brandId={selectedBrandId} />
                   </div>
                 )}
@@ -1512,7 +1538,20 @@ export function ChatContainer() {
 
                 {/* Panel Content */}
                 {isCopyPanelOpen && (
-                  <div className="flex-1 overflow-y-auto p-4">
+                  <div
+                    className="flex-1 overflow-y-auto p-4"
+                    style={{
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: 'rgba(255,255,255,0.2) transparent',
+                    }}
+                  >
+                    {/* Session Reference Materials */}
+                    <div style={{ marginBottom: '16px' }}>
+                      <SessionReferenceMaterialsPanel
+                        sessionId={currentSessionId || undefined}
+                        brandId={selectedBrandId || undefined}
+                      />
+                    </div>
                     <CopyLibraryPanel brandId={selectedBrandId} />
                   </div>
                 )}

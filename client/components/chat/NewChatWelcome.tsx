@@ -25,20 +25,17 @@ import { ModeSelector } from './ModeSelector';
 import { ModeIndicator } from './ModeIndicator';
 import type { SlashCommand } from '../../hooks/useWebSocket';
 import { CommandTextRenderer } from '../message/CommandTextRenderer';
-import { BrandSelector, BrandFormModal, BrandVoicePanel } from '../copywriting';
+import { BrandVoicePanel, ReferenceMaterialsPanel } from '../copywriting';
+import type { NewReferenceMaterial } from '../copywriting/ReferenceMaterialsPanel';
 import { ContentTypeQuickSelect, ContentFormatQuickSelect, type ContentType } from '../copywriting/ContentTypeSelector';
 import { BrandFormatsPanel } from '../copywriting/BrandFormatsPanel';
-import { PostTypeSelector } from '../copywriting/PostTypeSelector';
-import { TonePresetSelector } from '../copywriting/TonePresetSelector';
 import { useCopywritingContext } from '../../lib/stores/copywritingContext';
 import {
   useBrandAPI,
-  type Brand,
   type VoiceProfile,
   type ScrapedContent,
-  type CreateBrandInput,
-  type UpdateBrandInput,
   type VoiceAnalysis,
+  type ReferenceMaterial,
 } from '../../hooks/useBrandAPI';
 
 interface CopywritingContextPayload {
@@ -64,6 +61,7 @@ interface NewChatWelcomeProps {
   onModeChange?: (mode: 'general' | 'coder' | 'intense-research' | 'spark' | 'copywriting' | 'media') => void;
   sessionId?: string;
   pendingMessagesCount?: number;
+  selectedBrandId?: string | null;
 }
 
 const CAPABILITIES = [
@@ -74,7 +72,7 @@ const CAPABILITIES = [
   "I can analyze data and files"
 ];
 
-export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, disabled, isGenerating, isPlanMode, onTogglePlanMode, availableCommands = [], onOpenBuildWizard, mode, onModeChange, sessionId, pendingMessagesCount = 0 }: NewChatWelcomeProps) {
+export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, disabled, isGenerating, isPlanMode, onTogglePlanMode, availableCommands = [], onOpenBuildWizard, mode, onModeChange, sessionId: _sessionId, pendingMessagesCount = 0, selectedBrandId: brandIdProp }: NewChatWelcomeProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([]);
@@ -96,25 +94,33 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
   const [modeIndicatorWidth, setModeIndicatorWidth] = useState(80);
 
   // Brand management state (for copywriting mode)
+  // Brand is now controlled by header selector in ChatContainer - use prop if provided
   const brandAPI = useBrandAPI();
-  const { templateId, tonePresetId } = useCopywritingContext();
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
-  const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
-  const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
+  const copywritingContext = useCopywritingContext();
+  const { templateId, tonePresetId } = copywritingContext;
+  // Use prop from parent (header selector) if provided, otherwise fall back to context
+  const selectedBrandId = brandIdProp ?? copywritingContext.brandId;
   const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null);
   const [voiceAnalysis, setVoiceAnalysis] = useState<VoiceAnalysis | null>(null);
   const [scrapedContent, setScrapedContent] = useState<Map<string, ScrapedContent[]>>(new Map());
+  const [referenceMaterials, setReferenceMaterials] = useState<ReferenceMaterial[]>([]);
   const [isBrandDataLoading, setIsBrandDataLoading] = useState(false);
   const [selectedContentTypes, setSelectedContentTypes] = useState<ContentType[]>([]);
-  const [selectedFormatIds, setSelectedFormatIds] = useState<string[]>([]);
+  // Initialize from context to persist across component remounts (e.g., when session is created)
+  const [selectedFormatIds, setSelectedFormatIdsLocal] = useState<string[]>(copywritingContext.contentFormatIds);
+  // Sync format selection to context
+  const setSelectedFormatIds = (ids: string[]) => {
+    setSelectedFormatIdsLocal(ids);
+    copywritingContext.setContentFormatIds(ids);
+  };
 
-  // Load brands when copywriting or media mode is selected
+  // Sync format IDs from context when context changes (e.g., from ChatContainer)
   useEffect(() => {
-    if (selectedMode === 'copywriting' || selectedMode === 'media') {
-      loadBrands();
+    if (copywritingContext.contentFormatIds.length > 0 &&
+        JSON.stringify(copywritingContext.contentFormatIds) !== JSON.stringify(selectedFormatIds)) {
+      setSelectedFormatIdsLocal(copywritingContext.contentFormatIds);
     }
-  }, [selectedMode]);
+  }, [copywritingContext.contentFormatIds]);
 
   // Load voice profile and scraped content when brand is selected
   useEffect(() => {
@@ -125,87 +131,25 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
     }
   }, [selectedBrandId]);
 
-  const loadBrands = useCallback(async () => {
-    const loadedBrands = await brandAPI.fetchBrands();
-    setBrands(loadedBrands);
-
-    // Load scraped content for all brands
-    const contentMap = new Map<string, ScrapedContent[]>();
-    for (const brand of loadedBrands) {
-      const content = await brandAPI.fetchScrapedContent(brand.id);
-      contentMap.set(brand.id, content);
-    }
-    setScrapedContent(contentMap);
-  }, [brandAPI]);
-
   const loadBrandData = useCallback(async (brandId: string) => {
     setIsBrandDataLoading(true);
     try {
-      const [profile, analysis, content] = await Promise.all([
+      const [profile, analysis, content, references] = await Promise.all([
         brandAPI.fetchVoiceProfile(brandId),
         brandAPI.fetchVoiceAnalysis(brandId),
         brandAPI.fetchScrapedContent(brandId),
+        brandAPI.fetchReferences(brandId),
       ]);
       setVoiceProfile(profile);
       setVoiceAnalysis(analysis);
       setScrapedContent((prev) => new Map(prev).set(brandId, content));
+      setReferenceMaterials(references);
     } finally {
       setIsBrandDataLoading(false);
     }
   }, [brandAPI]);
 
-  const handleSelectBrand = (brandId: string) => {
-    setSelectedBrandId(brandId === selectedBrandId ? null : brandId);
-  };
-
-  const handleCreateBrand = () => {
-    setEditingBrand(null);
-    setIsBrandModalOpen(true);
-  };
-
-  const handleEditBrand = (brand: Brand) => {
-    setEditingBrand(brand);
-    setIsBrandModalOpen(true);
-  };
-
-  const handleSaveBrand = async (input: CreateBrandInput | UpdateBrandInput): Promise<Brand | null> => {
-    let savedBrand: Brand | null = null;
-
-    if (editingBrand) {
-      savedBrand = await brandAPI.updateBrand(editingBrand.id, input as UpdateBrandInput);
-    } else {
-      savedBrand = await brandAPI.createBrand(input as CreateBrandInput);
-    }
-
-    if (savedBrand) {
-      await loadBrands();
-      if (!editingBrand) {
-        setSelectedBrandId(savedBrand.id);
-      }
-    }
-
-    return savedBrand;
-  };
-
-  const handleDeleteBrand = async (brandId: string): Promise<boolean> => {
-    const success = await brandAPI.deleteBrand(brandId);
-    if (success) {
-      if (selectedBrandId === brandId) {
-        setSelectedBrandId(null);
-      }
-      await loadBrands();
-    }
-    return success;
-  };
-
-  const handleAnalyzeBrand = async (brandId: string): Promise<void> => {
-    // First scrape all brand URLs
-    await brandAPI.analyzeBrand(brandId);
-    // Then refresh the voice profile to generate scores from scraped content
-    await brandAPI.refreshVoiceProfile(brandId);
-    // Finally reload the brand data to show updated profile
-    await loadBrandData(brandId);
-  };
+  // Brand selection is now handled by header selector in ChatContainer
 
   const handleRefreshVoiceProfile = async (): Promise<void> => {
     if (!selectedBrandId) return;
@@ -220,6 +164,32 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
     const result = await brandAPI.deepAnalyzeBrand(selectedBrandId, 30);
     if (result?.success) {
       await loadBrandData(selectedBrandId);
+    }
+  };
+
+  // Reference materials handlers
+  const handleAddReference = async (material: NewReferenceMaterial): Promise<void> => {
+    if (!selectedBrandId) return;
+    const result = await brandAPI.addReference(selectedBrandId, {
+      materialType: material.material_type,
+      title: material.title,
+      content: material.content,
+      sourceUrl: material.source_url,
+      tags: material.tags,
+      filePath: material.filePath,
+      isFolder: material.isFolder,
+      folderDepth: material.folderDepth,
+      filePatterns: material.filePatterns,
+    });
+    if (result) {
+      setReferenceMaterials((prev) => [result, ...prev]);
+    }
+  };
+
+  const handleDeleteReference = async (materialId: string): Promise<void> => {
+    const success = await brandAPI.deleteReference(materialId);
+    if (success) {
+      setReferenceMaterials((prev) => prev.filter((m) => m.id !== materialId));
     }
   };
 
@@ -748,30 +718,19 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
             <ModeSelector selectedMode={selectedMode} onSelectMode={setSelectedMode} onOpenBuildWizard={onOpenBuildWizard} />
           </div>
 
-          {/* Brand Selector for Copywriting Mode */}
+          {/* Copywriting Mode Options (brand is selected via header dropdown in ChatContainer) */}
           {selectedMode === 'copywriting' && (
             <>
-              <BrandSelector
-                brands={brands}
-                selectedBrandId={selectedBrandId}
-                onSelectBrand={handleSelectBrand}
-                onCreateBrand={handleCreateBrand}
-                onEditBrand={handleEditBrand}
-                scrapedContent={scrapedContent}
-                isLoading={brandAPI.isLoading}
-              />
-
               {/* Content Format Quick Select - use brand formats when brand selected, fallback to legacy */}
               {selectedBrandId ? (
                 <ContentFormatQuickSelect
                   brandId={selectedBrandId}
                   selectedFormatIds={selectedFormatIds}
                   onToggle={(formatId) => {
-                    setSelectedFormatIds((prev) =>
-                      prev.includes(formatId)
-                        ? prev.filter((id) => id !== formatId)
-                        : [...prev, formatId]
-                    );
+                    const newIds = selectedFormatIds.includes(formatId)
+                      ? selectedFormatIds.filter((id) => id !== formatId)
+                      : [...selectedFormatIds, formatId];
+                    setSelectedFormatIds(newIds);
                   }}
                   disabled={brandAPI.isLoading}
                 />
@@ -801,18 +760,23 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
                 />
               )}
 
-              {/* Post Type Template Selector - shows when brand is selected */}
-              {selectedBrandId && (
-                <div className="mt-4">
-                  <PostTypeSelector compact />
-                </div>
-              )}
+              {/* NOTE: PostTypeSelector and TonePresetSelector hidden for simplicity.
+                  The LLM now asks for context via chat instead of requiring pre-selection.
+                  Consistency is derived from top-performing LinkedIn posts (engagement metrics).
+              */}
 
-              {/* Tone Preset Selector - shows when brand is selected */}
+              {/* Reference Materials Panel - high priority, right after content formats */}
               {selectedBrandId && (
-                <div className="mt-4">
-                  <TonePresetSelector compact />
-                </div>
+                <ReferenceMaterialsPanel
+                  brandId={selectedBrandId}
+                  materials={referenceMaterials.map((m) => ({
+                    ...m,
+                    tags: typeof m.tags === 'string' ? JSON.parse(m.tags) : m.tags,
+                  }))}
+                  isLoading={isBrandDataLoading}
+                  onAdd={handleAddReference}
+                  onDelete={handleDeleteReference}
+                />
               )}
 
               {/* Brand Content Formats Panel when brand is selected */}
@@ -849,20 +813,6 @@ export function NewChatWelcome({ inputValue, onInputChange, onSubmit, onStop, di
       </div>
 
       {/* Brand Form Modal */}
-      {isBrandModalOpen && (
-        <BrandFormModal
-          brand={editingBrand}
-          sessionId={sessionId || 'global'}
-          onSave={handleSaveBrand}
-          onDelete={editingBrand ? handleDeleteBrand : undefined}
-          onAnalyze={handleAnalyzeBrand}
-          onClose={() => {
-            setIsBrandModalOpen(false);
-            setEditingBrand(null);
-          }}
-        />
-      )}
-
     </div>
   );
 }
