@@ -8,22 +8,111 @@ Minimal, production-ready Next.js template with tRPC, Prisma, and shadcn/ui. Bui
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Set up environment variables
 cp .env.example .env
 
 # Update DATABASE_URL in .env, then push schema
-npm run db:push
+bun run db:push
 
 # Seed the database
-npx prisma db seed
+bunx prisma db seed
 
 # Start development server
-npm run dev
+bun run dev
 ```
 
 Visit `http://localhost:3000` to see your app!
+
+## Session Continuity
+
+**At the start of each new session**, check if `.claude/last-session.md` exists. If it does:
+1. Read the file to understand the previous session's context
+2. Acknowledge what was previously done
+3. Continue from the documented next steps
+
+Use `/close` at the end of a session to save state for next time.
+
+## Automation Preferences
+
+**Claude should automate CLI commands whenever possible.**
+
+### Tool Preferences
+
+1. **Package Manager**: Always use `bun` (it's installed and faster than npm)
+   - `bun install` instead of `npm install`
+   - `bun add <package>` instead of `npm install <package>`
+   - `bun run <script>` instead of `npm run <script>`
+   - `bun remove <package>` instead of `npm uninstall <package>`
+
+2. **Git Operations**: Run automatically
+   - `git add <files>` - stage specific changed files
+   - `git commit -m "message"` - commit with descriptive message
+   - `git push` - push to remote
+   - `git branch <name>` - create branches
+   - `git checkout <branch>` - switch branches
+   - `git status` - check status before commits
+
+3. **Database**: Run automatically
+   - `bun run db:push` - push schema changes
+   - `bun run db:generate` - regenerate Prisma client
+   - `bun run db:migrate` - create migrations
+   - `bun run db:studio` - open Prisma Studio
+
+4. **Code Quality**: Run automatically after edits
+   - `bun run typecheck` - ALWAYS run after editing TypeScript
+   - `bun run lint` - run to catch errors
+   - `bun run format` - format code
+   - These catch bugs early and ensure consistency
+
+5. **Build/Test**: Run automatically
+   - `bun run dev` - start dev server
+   - `bun run build` - build for production
+   - `bun run test` - run tests
+   - `bun run test:e2e` - run E2E tests
+
+### When to Ask User
+
+Only ask for manual intervention when:
+- **Sensitive data required**: API keys, passwords, tokens, secrets
+- **External setup needed**: GitHub repo creation, Vercel deployment, database hosting
+- **Destructive actions**: `git push --force`, `prisma db push --force-reset`, deleting production data
+- **Architecture decisions**: Which library/framework to use, major design choices
+- **Unclear requirements**: Feature specs that need clarification
+
+### Default Behavior
+
+- **After editing files**: Run `bun run typecheck` automatically
+- **After schema changes**: Run `bun run db:push && bun run db:generate` automatically
+- **After adding dependencies**: Run `bun install` automatically
+- **Before suggesting manual steps**: Check if it can be automated with CLI tools
+
+### Examples
+
+**GOOD (Automated)**:
+```
+I'll add the new component and run typecheck.
+[Edits file]
+[Runs: bun run typecheck]
+```
+
+**BAD (Manual)**:
+```
+I've added the component. Please run:
+npm run typecheck
+```
+
+**GOOD (Asking when needed)**:
+```
+I need your Resend API key to configure email. Please provide it.
+```
+
+**BAD (Asking unnecessarily)**:
+```
+Should I run git commit for you?
+[Just do it automatically!]
+```
 
 ## Project Structure
 
@@ -68,46 +157,46 @@ After editing ANY file, run these commands:
 
 ```bash
 # 1. Type check (CRITICAL - catches 90% of bugs)
-npm run typecheck
+bun run typecheck
 
 # 2. Lint (optional but recommended)
-npm run lint
+bun run lint
 
 # 3. Format check (optional)
-npm run format:check
+bun run format:check
 ```
 
 If you make schema changes:
 ```bash
-npm run db:push          # Push to database
-npm run db:generate      # Regenerate Prisma client
-npm run typecheck        # Verify no type errors
+bun run db:push          # Push to database
+bun run db:generate      # Regenerate Prisma client
+bun run typecheck        # Verify no type errors
 ```
 
 ## Key Commands
 
 ```bash
 # Development
-npm run dev                        # Start dev server (Turbopack)
-npm run build                      # Build for production
-npm run start                      # Start production server
+bun run dev                        # Start dev server (Turbopack)
+bun run build                      # Build for production
+bun run start                      # Start production server
 
 # Database
-npm run db:push                    # Push schema changes
-npm run db:generate                # Regenerate Prisma client
-npm run db:migrate                 # Create migration
-npm run db:studio                  # Open Prisma Studio
+bun run db:push                    # Push schema changes
+bun run db:generate                # Regenerate Prisma client
+bun run db:migrate                 # Create migration
+bun run db:studio                  # Open Prisma Studio
 
 # Code Quality
-npm run typecheck                  # Type check (no errors = safe to commit)
-npm run lint                       # Run ESLint
-npm run format                     # Format with Prettier
-npm run format:check               # Check formatting
+bun run typecheck                  # Type check (no errors = safe to commit)
+bun run lint                       # Run ESLint
+bun run format                     # Format with Prettier
+bun run format:check               # Check formatting
 
 # Testing
-npm run test                       # Run Vitest tests
-npm run test:ui                    # Vitest UI
-npm run test:e2e                   # Playwright E2E tests
+bun run test                       # Run Vitest tests
+bun run test:ui                    # Vitest UI
+bun run test:e2e                   # Playwright E2E tests
 ```
 
 ## Organization Rules
@@ -140,8 +229,8 @@ model Post {
 
 Then update the database:
 ```bash
-npm run db:push
-npm run db:generate
+bun run db:push
+bun run db:generate
 ```
 
 ### 2. Create a tRPC Router
@@ -339,20 +428,20 @@ export async function GET() {
 
 **Type errors after adding models?**
 ```bash
-npm run db:generate
-npm run typecheck
+bun run db:generate
+bun run typecheck
 ```
 
 **Database out of sync?**
 ```bash
-npm run db:push
+bun run db:push
 ```
 
 **Build fails?**
 ```bash
-npm run typecheck  # Check for type errors first
-npm run lint       # Check for lint errors
-npm run build      # Try build again
+bun run typecheck  # Check for type errors first
+bun run lint       # Check for lint errors
+bun run build      # Try build again
 ```
 
 ## Next Steps
