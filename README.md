@@ -1,307 +1,387 @@
-# Next.js Fullstack Template 🚀
+# Android & Flutter Reference Projects 📱
 
-> **Production-ready Next.js 16 template with tRPC, Prisma, shadcn/ui, Vercel Analytics, Sentry, and rate-limited API routes**
+> **Curated collection of production-ready Android (Kotlin) and Flutter reference implementations for mobile app development**
 
-A complete, opinionated fullstack Next.js starter that includes everything you need to build and deploy production-ready applications.
+A comprehensive learning resource featuring real production apps, official samples, and complete architecture examples. Perfect for developers building modern Android/Flutter applications or migrating from iOS.
 
-## ⚡ Quick Start
+## 🎯 Purpose
 
-### Option 1: Using degit (Recommended - No Git History)
+**This is a personal reference library** - a curated collection of existing open-source projects organized for quick learning and pattern reference. This repository does NOT contain original code but rather serves as:
 
-```bash
-npx degit willem4130/nextjs-fullstack-template my-app
-cd my-app
-npm install
-```
+- **Learning Resource** - Study production-quality code from trusted sources
+- **Quick Reference** - Find patterns and solutions without searching multiple repos
+- **Architecture Comparison** - See different approaches side-by-side (Riverpod vs BLoC, Compose patterns, etc.)
+- **iOS → Android/Flutter Migration Guide** - Technology mappings and equivalent patterns
 
-### Option 2: Using GitHub Template
+**What this is NOT:**
+- ❌ Not a template or starter kit (use official ones instead)
+- ❌ Not original work (all credit to original authors)
+- ❌ Not for redistribution (reference only)
 
-1. Click "Use this template" button on GitHub
-2. Create your repository
-3. Clone and install:
-
-```bash
-git clone https://github.com/willem4130/your-new-repo.git
-cd your-new-repo
-npm install
-```
-
-## 🎯 What's Included
-
-### Core Stack
-
-- ⚡ **Next.js 16** - App Router, React 19, Turbopack
-- 🔷 **TypeScript** - Strict mode, full type safety
-- 🎨 **Tailwind CSS 3** - Utility-first styling
-- 🧩 **shadcn/ui** - Beautiful, accessible components
-
-### Backend & Data
-
-- 🔄 **tRPC v11** - End-to-end typesafe APIs
-- 🗄️ **Prisma ORM** - Type-safe database client
-- 🐘 **PostgreSQL** - Production database (configured)
-- ✅ **Zod** - Runtime validation
-
-### Features
-
-- 📊 **Admin Dashboard** - Professional UI with sidebar navigation
-- 🔒 **Protected API Routes** - Rate limiting, authentication, validation
-- 🛡️ **Rate Limiting** - Upstash Redis integration
-- 📈 **Analytics** - Vercel Analytics + Speed Insights (privacy-friendly)
-- 🐛 **Error Tracking** - Sentry integration with session replay
-- 🌍 **Environment Validation** - Type-safe env vars with @t3-oss/env-nextjs
-
-### Developer Experience
-
-- 🧪 **Testing** - Vitest (unit) + Playwright (e2e)
-- 📝 **Code Quality** - ESLint, Prettier, Husky, lint-staged
-- 📚 **Documentation** - Complete setup guides included
-
-## 📦 What's Pre-configured
-
-### Admin Dashboard (`/admin`)
-
-- **Dashboard** - Stats cards, recent activity, metrics
-- **Users** - User management with data tables
-- **Settings** - Application configuration
-
-### API Routes (`/api`)
-
-- **Health Check** - `/api/health`
-- **Documentation** - `/api` (auto-generated)
-- **Posts CRUD** - `/api/posts` with full CRUD operations
-- **Rate Limited** - All endpoints protected
-- **Validated** - Zod schemas for all inputs
-
-### Components
-
-10 shadcn/ui components pre-installed:
-
-- Card, Table, Button, Dropdown Menu, Badge
-- Avatar, Separator, Input, Label, Select
-
-## 🚀 Setup Instructions
-
-### 1. Install Dependencies
-
-```bash
-npm install
-```
-
-### 2. Configure Environment Variables
-
-Copy `.env.example` to `.env` and configure:
-
-```bash
-cp .env.example .env
-```
-
-Required:
-
-```bash
-DATABASE_URL="postgresql://user:password@localhost:5432/mydb"
-```
-
-Optional (but recommended):
-
-```bash
-# Upstash Redis (rate limiting) - https://upstash.com
-UPSTASH_REDIS_REST_URL="your-url"
-UPSTASH_REDIS_REST_TOKEN="your-token"
-
-# API Authentication
-API_SECRET_KEY="generate-with-openssl-rand-base64-32"
-
-# Sentry (error tracking) - https://sentry.io
-NEXT_PUBLIC_SENTRY_DSN="your-dsn"
-SENTRY_ORG="your-org"
-SENTRY_PROJECT="your-project"
-SENTRY_AUTH_TOKEN="your-token"
-```
-
-### 3. Set Up Database
-
-```bash
-# Push schema to database
-npm run db:push
-
-# Or create migration
-npm run db:migrate
-```
-
-### 4. Run Development Server
-
-```bash
-npm run dev
-```
-
-Visit [http://localhost:3000](http://localhost:3000)
-
-### 5. Explore the Features
-
-- **Homepage**: `/` - Landing page
-- **Admin Dashboard**: `/admin/dashboard` - Admin interface
-- **API Docs**: `/api` - API documentation
-- **Sentry Test**: `/sentry-test` - Error tracking test page
-
-## 📖 Documentation
-
-Comprehensive guides included in the repository:
-
-- **[ANALYTICS.md](./ANALYTICS.md)** - Vercel Analytics setup
-- **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)** - Complete API reference
-- **[SENTRY_SETUP.md](./SENTRY_SETUP.md)** - Error tracking guide
-
-## 🛠️ Available Scripts
-
-### Development
-
-```bash
-npm run dev          # Start dev server with Turbopack
-npm run build        # Build for production
-npm run start        # Start production server
-npm run lint         # Run ESLint
-npm run format       # Format code with Prettier
-npm run typecheck    # Run TypeScript type checking
-```
-
-### Testing
-
-```bash
-npm run test         # Run Vitest unit tests
-npm run test:ui      # Open Vitest UI
-npm run test:e2e     # Run Playwright e2e tests
-npm run test:e2e:ui  # Open Playwright UI
-```
-
-### Database
-
-```bash
-npm run db:generate  # Generate Prisma client
-npm run db:push      # Push schema changes
-npm run db:migrate   # Create migration
-npm run db:studio    # Open Prisma Studio
-```
-
-## 🏗️ Project Structure
-
-```
-nextjs-fullstack-template/
-├── src/
-│   ├── app/                    # Next.js App Router
-│   │   ├── (auth)/            # Protected routes
-│   │   ├── (public)/          # Public routes
-│   │   ├── admin/             # Admin dashboard
-│   │   ├── api/               # API routes
-│   │   ├── error.tsx          # Error boundary
-│   │   └── layout.tsx         # Root layout
-│   ├── components/            # React components
-│   │   └── ui/                # shadcn/ui components
-│   ├── lib/                   # Utilities
-│   │   ├── api-middleware.ts  # API helpers
-│   │   └── rate-limit.ts      # Rate limiting
-│   ├── server/                # Backend code
-│   │   ├── api/               # tRPC routers
-│   │   └── db/                # Prisma client
-│   ├── trpc/                  # tRPC client config
-│   └── env.js                 # Environment validation
-├── prisma/
-│   └── schema.prisma          # Database schema
-├── tests/
-│   ├── unit/                  # Unit tests
-│   ├── integration/           # Integration tests
-│   └── e2e/                   # E2E tests
-└── public/                    # Static files
-```
-
-## 🔧 Customization
-
-### Update Project Name
-
-1. Update `package.json` name field
-2. Update database name in `.env`
-3. Update metadata in `src/app/layout.tsx`
-
-### Add Authentication
-
-The template is ready for authentication. Recommended options:
-
-- **NextAuth.js** - OAuth, credentials, magic links
-- **Clerk** - Drop-in authentication
-- **Better Auth** - Modern auth library
-
-### Add More API Routes
-
-Follow the pattern in `src/app/api/posts/route.ts`:
-
-```typescript
-import { protectedRoute, apiResponse, validateRequest } from '@/lib/api-middleware'
-
-export async function GET(request: NextRequest) {
-  return protectedRoute(request, async (req) => {
-    // Your logic here
-    return apiResponse({ data: 'your-data' })
-  })
-}
-```
-
-### Add More shadcn/ui Components
-
-```bash
-npx shadcn@latest add dialog
-npx shadcn@latest add form
-npx shadcn@latest add toast
-```
-
-## 🚢 Deployment
-
-### Deploy to Vercel (Recommended)
-
-1. Push to GitHub
-2. Import project on [Vercel](https://vercel.com)
-3. Add environment variables
-4. Deploy!
-
-Vercel will auto-detect Next.js and configure:
-
-- ✅ Analytics (automatic)
-- ✅ Speed Insights (automatic)
-- ✅ Edge Functions
-- ✅ Serverless Functions
-
-### Environment Variables for Production
-
-Don't forget to add in Vercel dashboard:
-
-- `DATABASE_URL`
-- `DIRECT_URL`
-- `NEXT_PUBLIC_SENTRY_DSN`
-- `SENTRY_AUTH_TOKEN`
-- Other optional vars
-
-## 🤝 Contributing
-
-This is a template repository. Feel free to:
-
-1. Fork it
-2. Customize for your needs
-3. Share improvements via PR
-
-## 📝 License
-
-MIT License - use freely for personal and commercial projects.
-
-## 🙏 Credits
-
-Built with:
-
-- [Next.js](https://nextjs.org)
-- [tRPC](https://trpc.io)
-- [Prisma](https://prisma.io)
-- [shadcn/ui](https://ui.shadcn.com)
-- [Vercel Analytics](https://vercel.com/analytics)
-- [Sentry](https://sentry.io)
+**How to use this repo:**
+1. Browse to find relevant examples for your use case
+2. Study the code patterns and architecture
+3. Apply learnings to your own projects
+4. Reference the detailed READMEs in each section
 
 ---
 
-**Ready to build?** Start with `npx degit willem4130/nextjs-fullstack-template my-app` 🚀
+## 📦 What's Included
+
+This repository contains **18,340+ files** (~251 MB) of production-quality code organized into two main sections:
+
+### 🟢 Kotlin Android (5,960 files)
+Three approaches to modern Android development with Jetpack Compose
+
+### 🔵 Flutter (8,090 files)
+Three state management patterns with complete app examples
+
+---
+
+## 🗂️ Repository Structure
+
+```
+Android/
+├── Kotlin/android/                     # Native Android with Kotlin
+│   ├── 01-openclaw-production-app/    # Real production AI voice app
+│   ├── 02-compose-playground-examples/ # UI component examples
+│   ├── 03-official-compose-samples/   # Google's official samples
+│   └── README.md                      # Detailed Kotlin guide
+│
+└── flutter/                           # Cross-platform Flutter
+    ├── 1-riverpod-examples/           # Modern state management
+    ├── 2-bloc-examples/               # Structured state management
+    ├── 3-flutter-official-samples/    # Official Flutter samples
+    ├── README.md                      # Detailed Flutter guide
+    └── QUICK_REFERENCE.md            # iOS → Flutter migration guide
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+**For Kotlin/Android:**
+```bash
+# Install Android Studio
+# https://developer.android.com/studio
+
+# Open a project
+open -a "Android Studio" Kotlin/android/01-openclaw-production-app/apps/android
+```
+
+**For Flutter:**
+```bash
+# Install Flutter
+brew install flutter
+flutter doctor
+
+# Run an example
+cd flutter/3-flutter-official-samples/compass_app/app
+flutter pub get
+flutter run
+```
+
+---
+
+## 📚 Learning Paths
+
+### Path 1: Kotlin/Android (Native)
+
+#### Beginner (Week 1)
+1. **02-compose-playground-examples/** - Learn Compose components
+2. **03-official-compose-samples/JetNews/** - Basic app structure
+
+#### Intermediate (Week 2)
+1. **03-official-compose-samples/Jetcaster/** - Complete production app
+2. **03-official-compose-samples/Reply/** - Complex navigation
+
+#### Advanced (Week 3)
+1. **01-openclaw-production-app/** - Real AI voice app architecture
+   - Study MVVM pattern
+   - Hilt dependency injection
+   - Background services
+   - WebRTC integration
+
+### Path 2: Flutter (Cross-platform)
+
+#### Beginner (Week 1)
+1. **3-flutter-official-samples/navigation_and_routing/** - Learn go_router
+2. **1-riverpod-examples/examples/counter/** - State management basics
+
+#### Intermediate (Week 2)
+1. **1-riverpod-examples/examples/marvel/** ⭐ - REST API integration
+2. **2-bloc-examples/examples/flutter_login/** - Forms & authentication
+
+#### Advanced (Week 3)
+1. **3-flutter-official-samples/compass_app/** ⭐⭐⭐ - **MOST IMPORTANT**
+   - Complete production architecture
+   - Clean architecture pattern
+   - Repository pattern
+   - Freezed models
+   - Comprehensive testing
+
+---
+
+## 🎯 Key Projects to Study
+
+### Kotlin Android
+
+| Project | Best For | Key Technologies |
+|---------|----------|------------------|
+| **OpenClaw Production App** | Real-world architecture | Compose, Hilt, MVVM, WebRTC |
+| **Compose Playground** | Learning UI components | All Compose widgets, animations |
+| **Jetcaster** (Official) | Media apps | ExoPlayer, background services |
+| **Jetsnack** (Official) | E-commerce UI | Complex layouts, animations |
+
+### Flutter
+
+| Project | Best For | Key Technologies |
+|---------|----------|------------------|
+| **Compass App** ⭐⭐⭐ | Complete blueprint | go_router, Freezed, clean architecture |
+| **Marvel API Example** | REST integration | Dio, async/await, error handling |
+| **Flutter Login (BLoC)** | Authentication | Form validation, BLoC pattern |
+| **Riverpod Todos** | CRUD operations | State management, local storage |
+
+---
+
+## 🛠️ Tech Stack Overview
+
+### Kotlin Android Stack
+
+```kotlin
+// Core
+- Jetpack Compose (UI)
+- Material 3 (Design)
+- Kotlin Coroutines (Async)
+- Hilt (Dependency Injection)
+
+// Architecture
+- MVVM (Model-View-ViewModel)
+- Repository Pattern
+- UseCase Pattern
+
+// Navigation
+- Navigation Compose
+
+// Networking
+- Ktor or Retrofit
+- OkHttp
+```
+
+### Flutter Stack
+
+```yaml
+# State Management (Choose one)
+- Riverpod (Modern, recommended)
+- BLoC (Structured, testable)
+- Provider (Simple)
+
+# Navigation
+- go_router (Type-safe routing)
+
+# Networking
+- Dio (HTTP client)
+- pretty_dio_logger
+
+# Local Storage
+- Hive (NoSQL database)
+- flutter_secure_storage (Keychain equivalent)
+
+# Code Generation
+- Freezed (Immutable models)
+- json_serializable
+```
+
+---
+
+## 💡 iOS to Android/Flutter Migration
+
+Perfect for iOS developers! This repository includes:
+
+### Technology Mapping
+
+| iOS | Kotlin Android | Flutter |
+|-----|----------------|---------|
+| `SwiftUI` | `Jetpack Compose` | `Flutter Widgets` |
+| `@Observable` | `ViewModel + StateFlow` | `Riverpod Provider` |
+| `SwiftData` | `Room` | `Hive` / `Drift` |
+| `Keychain` | `EncryptedSharedPreferences` | `flutter_secure_storage` |
+| `AVFoundation` | `ExoPlayer` / `MediaPlayer` | `audioplayers` / `record` |
+| `URLSession` | `Ktor` / `Retrofit` | `Dio` |
+| `NavigationStack` | `Navigation Compose` | `go_router` |
+| `@Published` | `StateFlow` / `LiveData` | `StateNotifier` / `AsyncValue` |
+
+See **`flutter/QUICK_REFERENCE.md`** for comprehensive iOS → Flutter migration guide.
+
+---
+
+## 🔍 Find Specific Patterns
+
+| I Need... | Look Here |
+|-----------|-----------|
+| **REST API calls** | `flutter/1-riverpod-examples/examples/marvel/` |
+| **Authentication flow** | `flutter/2-bloc-examples/examples/flutter_login/` |
+| **Form validation** | `flutter/3-flutter-official-samples/form_app/` |
+| **Navigation & routing** | `flutter/3-flutter-official-samples/compass_app/` |
+| **Media playback** | `Kotlin/android/03-official-compose-samples/Jetcaster/` |
+| **Complex animations** | `Kotlin/android/02-compose-playground-examples/` |
+| **Dependency injection** | `Kotlin/android/01-openclaw-production-app/` |
+| **Complete architecture** | `flutter/3-flutter-official-samples/compass_app/` ⭐ |
+| **Testing patterns** | `flutter/3-flutter-official-samples/compass_app/test/` |
+| **Platform channels** | `flutter/3-flutter-official-samples/platform_channels/` |
+
+---
+
+## 📖 Documentation
+
+Each section includes comprehensive documentation:
+
+- **[Kotlin/android/README.md](Kotlin/android/README.md)** - Complete Kotlin/Android guide
+  - Project structures
+  - Build configurations
+  - Architecture patterns
+  - Learning recommendations
+
+- **[flutter/README.md](flutter/README.md)** - Complete Flutter guide
+  - State management comparison
+  - API integration patterns
+  - Production architecture
+  - iOS → Flutter mapping
+
+- **[flutter/QUICK_REFERENCE.md](flutter/QUICK_REFERENCE.md)** - iOS developer's Flutter cheat sheet
+
+---
+
+## 🎓 Recommended Study Order
+
+**For Complete Beginners:**
+1. Start with Flutter (easier learning curve)
+2. Study `compass_app` for architecture
+3. Build a simple CRUD app with Riverpod
+
+**For iOS Developers:**
+1. Read `flutter/QUICK_REFERENCE.md` first
+2. Compare iOS patterns with Flutter equivalents
+3. Study `compass_app` architecture
+4. Port a small iOS app to Flutter
+
+**For Android Developers:**
+1. Study Kotlin examples if new to Compose
+2. Compare with Flutter for cross-platform needs
+3. Reference OpenClaw for production patterns
+
+**For Full Production Apps:**
+1. Study `compass_app` (Flutter) or `Jetcaster` (Android) first
+2. Understand clean architecture pattern
+3. Study `openclaw-production-app` for real-world complexity
+4. Reference `marvel` example for API integration
+
+---
+
+## 🏗️ Building Your Own App
+
+### Quick Template Setup
+
+**Kotlin Android:**
+```bash
+# Create new Android project in Android Studio
+# File → New → New Project → Empty Activity (Compose)
+
+# Then reference these patterns:
+# - Architecture: openclaw-production-app
+# - UI Components: compose-playground-examples
+# - Best practices: official-compose-samples
+```
+
+**Flutter:**
+```bash
+# Create new Flutter app
+flutter create --org com.yourcompany your_app_name
+cd your_app_name
+
+# Add dependencies (see flutter/README.md for full list)
+flutter pub add flutter_riverpod
+flutter pub add go_router
+flutter pub add dio
+flutter pub add hive_flutter
+
+# Study compass_app for folder structure
+# Copy architecture patterns from examples
+```
+
+---
+
+## 🤝 Attribution & Credits
+
+This is a curated reference collection. All credit goes to the original authors:
+
+### Kotlin Android
+- **OpenClaw** - [openclaw.ai](https://openclaw.ai) - Production AI app
+- **Compose Playground** - Community Compose examples
+- **Official Compose Samples** - [Google](https://github.com/android/compose-samples)
+
+### Flutter
+- **Riverpod Examples** - [riverpod.dev](https://riverpod.dev)
+- **BLoC Examples** - [bloclibrary.dev](https://bloclibrary.dev)
+- **Flutter Samples** - [Google Flutter Team](https://github.com/flutter/samples)
+
+**Purpose of this repository:** Personal learning and quick reference. Not intended for redistribution without proper attribution to original authors.
+
+---
+
+## 📊 Repository Stats
+
+- **Total Files:** 18,340+
+- **Total Size:** ~251 MB
+- **Languages:** Kotlin, Dart, TypeScript
+- **Kotlin Projects:** 3 major reference implementations
+- **Flutter Projects:** 3 state management approaches + 15+ example apps
+
+---
+
+## 📝 License
+
+Each project within this repository maintains its original license:
+- **Official Google Samples:** Apache 2.0
+- **Community Examples:** Various open source licenses
+- **OpenClaw:** Check original repository
+
+See individual project directories for specific license information.
+
+---
+
+## 🔗 Useful Resources
+
+### Official Documentation
+- [Android Developers](https://developer.android.com)
+- [Jetpack Compose](https://developer.android.com/jetpack/compose)
+- [Flutter](https://flutter.dev)
+- [Kotlin](https://kotlinlang.org)
+- [Dart](https://dart.dev)
+
+### State Management
+- [Riverpod](https://riverpod.dev)
+- [BLoC](https://bloclibrary.dev)
+- [Provider](https://pub.dev/packages/provider)
+
+### Architecture
+- [Android Architecture Guide](https://developer.android.com/topic/architecture)
+- [Flutter Architecture Samples](https://github.com/brianegan/flutter_architecture_samples)
+
+---
+
+## 🎯 Next Steps
+
+1. **Explore the code** - Pick a project from the table above
+2. **Run the examples** - Follow quick start instructions
+3. **Study the patterns** - Read the detailed READMEs in each section
+4. **Build something** - Apply what you learned to your own project
+
+---
+
+**Happy coding!** 🚀
+
+*Last Updated: February 2, 2026*
+*Maintained by: [willem4130](https://github.com/willem4130)*
