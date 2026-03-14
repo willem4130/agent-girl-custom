@@ -47,6 +47,7 @@ export interface SessionMessage {
   type: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  sdk_message_uuid?: string; // SDK's UUID for file checkpointing/rewind
 }
 
 export interface Workflow {
@@ -158,6 +159,9 @@ class SessionDatabase {
 
     // Migration: Add context usage columns if they don't exist
     this.migrateContextUsage();
+
+    // Migration: Add sdk_message_uuid column to messages if it doesn't exist
+    this.migrateSdkMessageUuid();
 
     // Migration: Add workflows table if it doesn't exist
     this.migrateWorkflows();
@@ -333,6 +337,34 @@ class SessionDatabase {
         console.log('✅ Context usage columns added successfully');
       } else {
         console.log('✅ Context usage columns already exist');
+      }
+    } catch (error) {
+      console.error('❌ Database migration failed:', error);
+      throw error;
+    }
+  }
+
+  private migrateSdkMessageUuid() {
+    try {
+      // Check if sdk_message_uuid column exists in messages table
+      const columns = this.db.query<{ name: string }, []>(
+        "PRAGMA table_info(messages)"
+      ).all();
+
+      const hasSdkMessageUuid = columns.some(col => col.name === 'sdk_message_uuid');
+
+      if (!hasSdkMessageUuid) {
+        console.log('📦 Migrating database: Adding sdk_message_uuid column to messages');
+
+        // Add the column (nullable, as it's only set for user messages with checkpoints)
+        this.db.run(`
+          ALTER TABLE messages
+          ADD COLUMN sdk_message_uuid TEXT
+        `);
+
+        console.log('✅ sdk_message_uuid column added successfully');
+      } else {
+        console.log('✅ sdk_message_uuid column already exists');
       }
     } catch (error) {
       console.error('❌ Database migration failed:', error);
@@ -694,6 +726,31 @@ class SessionDatabase {
       "UPDATE messages SET content = ?, timestamp = ? WHERE id = ?",
       [content, timestamp, messageId]
     );
+  }
+
+  updateMessageSdkUuid(messageId: string, sdkMessageUuid: string): void {
+    this.db.run(
+      "UPDATE messages SET sdk_message_uuid = ? WHERE id = ?",
+      [sdkMessageUuid, messageId]
+    );
+  }
+
+  getMessageBySdkUuid(sdkMessageUuid: string): SessionMessage | null {
+    return this.db
+      .query<SessionMessage, [string]>(
+        "SELECT * FROM messages WHERE sdk_message_uuid = ?"
+      )
+      .get(sdkMessageUuid) || null;
+  }
+
+  getLatestUserMessageWithCheckpoint(sessionId: string): SessionMessage | null {
+    return this.db
+      .query<SessionMessage, [string]>(
+        `SELECT * FROM messages
+         WHERE session_id = ? AND type = 'user' AND sdk_message_uuid IS NOT NULL
+         ORDER BY timestamp DESC LIMIT 1`
+      )
+      .get(sessionId) || null;
   }
 
   getSessionMessages(sessionId: string): SessionMessage[] {

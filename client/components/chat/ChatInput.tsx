@@ -27,6 +27,7 @@ import type { SlashCommand } from '../../hooks/useWebSocket';
 import { CommandTextRenderer } from '../message/CommandTextRenderer';
 import { StyleConfigModal } from './StyleConfigModal';
 import { FeaturesModal } from './FeaturesModal';
+import { ThinkingTokensControl } from './ThinkingTokensControl';
 import { getModelConfig } from '../../config/models';
 
 interface ChatInputProps {
@@ -50,9 +51,11 @@ interface ChatInputProps {
   };
   selectedModel?: string;
   pendingMessagesCount?: number;
+  thinkingTokens?: number;
+  onThinkingTokensChange?: (value: number) => void;
 }
 
-export function ChatInput({ value, onChange, onSubmit, onStop, disabled, isGenerating, placeholder, isPlanMode, onTogglePlanMode, backgroundProcesses: _backgroundProcesses = [], onKillProcess: _onKillProcess, mode, availableCommands = [], contextUsage, selectedModel, pendingMessagesCount = 0 }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, onStop, disabled, isGenerating, placeholder, isPlanMode, onTogglePlanMode, backgroundProcesses: _backgroundProcesses = [], onKillProcess: _onKillProcess, mode, availableCommands = [], contextUsage, selectedModel, pendingMessagesCount = 0, thinkingTokens = 10000, onThinkingTokensChange }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([]);
@@ -499,6 +502,19 @@ export function ChatInput({ value, onChange, onSubmit, onStop, disabled, isGener
                     <List size={20} />
                   </button>
                 )}
+
+                {/* Thinking Tokens Control - only for Anthropic models */}
+                {onThinkingTokensChange && (() => {
+                  const modelConfig = selectedModel ? getModelConfig(selectedModel) : null;
+                  const isAnthropicModel = !modelConfig || modelConfig.provider === 'anthropic';
+                  return isAnthropicModel ? (
+                    <ThinkingTokensControl
+                      currentValue={thinkingTokens}
+                      onChange={onThinkingTokensChange}
+                      disabled={isGenerating}
+                    />
+                  ) : null;
+                })()}
 
                 {/* Background Process Monitor */}
                 {/* TODO: Fix background process display - temporarily disabled */}

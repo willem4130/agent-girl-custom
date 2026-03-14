@@ -62,6 +62,8 @@ interface NewChatWelcomeProps {
   sessionId?: string;
   pendingMessagesCount?: number;
   selectedBrandId?: string | null;
+  thinkingTokens?: number;
+  onThinkingTokensChange?: (tokens: number) => void;
 }
 
 const CAPABILITIES = [

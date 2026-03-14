@@ -29,6 +29,7 @@ import { WorkingDirectoryDisplay } from '../header/WorkingDirectoryDisplay';
 import { AboutButton } from '../header/AboutButton';
 import { RadioPlayer } from '../header/RadioPlayer';
 import { PlanApprovalModal } from '../plan/PlanApprovalModal';
+import { QuestionModal, type Question } from '../question/QuestionModal';
 import { BuildWizard } from '../build-wizard/BuildWizard';
 import { ScrollButton } from './ScrollButton';
 import { useWebSocket } from '../../hooks/useWebSocket';
@@ -91,8 +92,20 @@ export function ChatContainer() {
   // Permission mode (simplified to just plan mode on/off)
   const [isPlanMode, setIsPlanMode] = useState<boolean>(false);
 
+  // Extended thinking tokens
+  const [thinkingTokens, setThinkingTokensState] = useState<number>(() => {
+    const stored = localStorage.getItem('agent-boy-thinking-tokens');
+    return stored ? parseInt(stored, 10) : 10000;
+  });
+
   // Plan approval
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
+
+  // Question modal state
+  const [pendingQuestion, setPendingQuestion] = useState<{
+    toolId: string;
+    questions: Question[];
+  } | null>(null);
 
   // Background processes (per-session)
   const [backgroundProcesses, setBackgroundProcesses] = useState<Map<string, BackgroundProcess[]>>(new Map());
@@ -448,6 +461,7 @@ export function ChatContainer() {
         content: 'Approved. Please proceed with the plan.',
         sessionId: currentSessionId,
         model: selectedModel,
+        thinkingTokens: thinkingTokens,
       });
     }, 100); // Small delay to ensure mode is switched
   };
@@ -458,7 +472,50 @@ export function ChatContainer() {
     if (currentSessionId) setSessionLoading(currentSessionId, false);
   };
 
-  const { isConnected, sendMessage, stopGeneration } = useWebSocket({
+  // Handle question submission
+  const handleQuestionSubmit = (toolId: string, answers: Record<string, string>) => {
+    if (!currentSessionId) return;
+
+    // Send answers back to server
+    sendMessage({
+      type: 'answer_question',
+      toolId,
+      answers,
+      sessionId: currentSessionId,
+    });
+
+    // Add user message showing their answers
+    const answerText = Object.entries(answers)
+      .map(([header, answer]) => `**${header}:** ${answer}`)
+      .join('\n');
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      type: 'user',
+      content: answerText,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    // Clear modal
+    setPendingQuestion(null);
+  };
+
+  // Handle question cancel - send cancellation to server
+  const handleQuestionCancel = (toolId: string) => {
+    if (currentSessionId) {
+      // Notify server to cancel the pending question
+      sendMessage({
+        type: 'cancel_question',
+        toolId,
+        sessionId: currentSessionId,
+      });
+      setSessionLoading(currentSessionId, false);
+    }
+    setPendingQuestion(null);
+  };
+
+  const { isConnected, sendMessage, stopGeneration, rewindFiles, setThinkingTokens } = useWebSocket({
     // Use dynamic URL based on current window location (works on any port)
     url: `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`,
     onMessage: (message) => {
@@ -1035,6 +1092,50 @@ export function ChatContainer() {
 
           console.log(`📊 Context usage updated for session ${targetSessionId.substring(0, 8)}: ${usageMsg.contextPercentage}%`);
         }
+      } else if (message.type === 'ask_user_question' && 'toolId' in message && 'questions' in message) {
+        // Handle AskUserQuestion tool - show modal to get user's answers
+        const questionMsg = message as {
+          type: 'ask_user_question';
+          toolId: string;
+          questions: Question[];
+          sessionId?: string;
+        };
+        console.log('❓ Received question from Claude:', questionMsg.questions);
+        setPendingQuestion({
+          toolId: questionMsg.toolId,
+          questions: questionMsg.questions,
+        });
+      } else if (message.type === 'question_answered') {
+        // Clear the question modal when answer is confirmed
+        setPendingQuestion(null);
+      } else if (message.type === 'message_saved' && 'tempId' in message && 'messageId' in message) {
+        // Sync client message ID with server's actual ID
+        const savedMsg = message as { type: 'message_saved'; tempId: string; messageId: string };
+        setMessages((prev) => prev.map(msg => {
+          if (msg.id === savedMsg.tempId) {
+            return { ...msg, id: savedMsg.messageId };
+          }
+          return msg;
+        }));
+        console.log(`💾 Message ID synced: ${savedMsg.tempId} → ${savedMsg.messageId.substring(0, 8)}`);
+      } else if (message.type === 'checkpoint_created' && 'messageId' in message && 'sdkUuid' in message) {
+        // Handle file checkpoint created - update user message with SDK UUID
+        const checkpointMsg = message as { type: 'checkpoint_created'; messageId: string; sdkUuid: string };
+        setMessages((prev) => prev.map(msg => {
+          if (msg.id === checkpointMsg.messageId && msg.type === 'user') {
+            return { ...msg, sdkMessageUuid: checkpointMsg.sdkUuid };
+          }
+          return msg;
+        }));
+        console.log(`📍 Checkpoint created: ${checkpointMsg.sdkUuid.substring(0, 8)}`);
+      } else if (message.type === 'files_rewound' && 'sdkUuid' in message) {
+        // Handle files rewound confirmation
+        const rewoundMsg = message as { type: 'files_rewound'; sdkUuid: string };
+        toast.success('Files Rewound', {
+          description: `Files restored to checkpoint ${rewoundMsg.sdkUuid.substring(0, 8)}`,
+          duration: 3000,
+        });
+        console.log(`⏪ Files rewound to: ${rewoundMsg.sdkUuid.substring(0, 8)}`);
       } else if (message.type === 'keepalive') {
         // Keepalive messages are sent every 30s to prevent WebSocket idle timeout
         // during long-running operations. No action needed - just acknowledge receipt.
@@ -1125,8 +1226,9 @@ export function ChatContainer() {
         }
       }
 
+      const tempId = Date.now().toString();
       const userMessage: Message = {
-        id: Date.now().toString(),
+        id: tempId,
         type: 'user',
         content: messageText,
         timestamp: new Date().toISOString(),
@@ -1135,6 +1237,9 @@ export function ChatContainer() {
 
       setMessages((prev) => [...prev, userMessage]);
       setSessionLoading(sessionId, true);
+
+      // Store tempId for message_saved event to sync with server ID
+      (userMessage as Message & { tempId?: string }).tempId = tempId;
 
       // Build content: if there are image files, send as array of blocks
       // Otherwise, send as plain string (existing behavior)
@@ -1205,6 +1310,8 @@ export function ChatContainer() {
         sessionId: sessionId,
         model: selectedModel,
         timezone: userTimezone,
+        tempId: tempId, // For syncing message ID with server
+        thinkingTokens: thinkingTokens,
         // Include copywriting context when in copywriting/media mode with brand selected
         ...(effectiveCopywritingContext ? { copywritingContext: effectiveCopywritingContext } : {}),
       });
@@ -1221,6 +1328,17 @@ export function ChatContainer() {
     if (currentSessionId) {
       stopGeneration(currentSessionId);
       setSessionLoading(currentSessionId, false);
+    }
+  };
+
+  // Handle thinking tokens change
+  const handleThinkingTokensChange = (value: number) => {
+    setThinkingTokensState(value);
+    localStorage.setItem('agent-boy-thinking-tokens', value.toString());
+
+    // If there's an active session, send the change to the server
+    if (currentSessionId) {
+      setThinkingTokens(currentSessionId, value);
     }
   };
 
@@ -1426,6 +1544,8 @@ export function ChatContainer() {
               sessionId={currentSessionId || undefined}
               pendingMessagesCount={pendingMessages.length}
               selectedBrandId={selectedBrandId}
+              thinkingTokens={thinkingTokens}
+              onThinkingTokensChange={handleThinkingTokensChange}
             />
             {/* Copy Library Panel - Right sidebar for copywriting mode */}
             {currentSessionMode === 'copywriting' && (
@@ -1494,6 +1614,7 @@ export function ChatContainer() {
                 isLoading={isCurrentSessionLoading}
                 liveTokenCount={liveTokenCount}
                 scrollContainerRef={scrollContainerRef}
+                onRewindFiles={currentSessionId ? (sdkUuid) => rewindFiles(currentSessionId, sdkUuid) : undefined}
               />
 
               {/* Input */}
@@ -1514,6 +1635,8 @@ export function ChatContainer() {
                 contextUsage={currentSessionId ? contextUsage.get(currentSessionId) : undefined}
                 selectedModel={selectedModel}
                 pendingMessagesCount={pendingMessages.length}
+                thinkingTokens={thinkingTokens}
+                onThinkingTokensChange={handleThinkingTokensChange}
               />
             </div>
 
@@ -1568,6 +1691,16 @@ export function ChatContainer() {
           onApprove={handleApprovePlan}
           onReject={handleRejectPlan}
           isResponseInProgress={isLoading}
+        />
+      )}
+
+      {/* Question Modal */}
+      {pendingQuestion && (
+        <QuestionModal
+          toolId={pendingQuestion.toolId}
+          questions={pendingQuestion.questions}
+          onSubmit={handleQuestionSubmit}
+          onCancel={handleQuestionCancel}
         />
       )}
 
