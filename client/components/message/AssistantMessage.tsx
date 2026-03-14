@@ -21,8 +21,9 @@
 import React, { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { SyntaxHighlighter, vscDarkPlus } from '../../utils/syntaxHighlighter';
-import { AssistantMessage as AssistantMessageType, ToolUseBlock, TextBlock, TodoItem, LongRunningCommandBlock } from './types';
+import { AssistantMessage as AssistantMessageType, ToolUseBlock, TextBlock, TodoItem, LongRunningCommandBlock, ImageGalleryBlock } from './types';
 import { ThinkingBlock } from './ThinkingBlock';
 import { CodeBlockWithCopy } from './CodeBlockWithCopy';
 import { URLBadge } from './URLBadge';
@@ -31,6 +32,8 @@ import { SaveToCopyLibrary } from './SaveToCopyLibrary';
 import { Shield } from 'lucide-react';
 import { showError } from '../../utils/errorMessages';
 import { useCopywritingContext } from '../../lib/stores/copywritingContext';
+import { GeneratedImagesGallery } from '../media/GeneratedImagesGallery';
+import { useMediaGeneration } from '../../hooks/useMediaGeneration';
 
 interface AssistantMessageProps {
   message: AssistantMessageType;
@@ -1093,7 +1096,7 @@ function ExitPlanModeComponent({ toolUse }: { toolUse: ToolUseBlock }) {
         <div className="p-4 bg-blue-500/5 text-sm">
           <div className="prose prose-base max-w-none prose-invert">
             <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
+              remarkPlugins={[remarkGfm, remarkBreaks]}
               components={{
                 a: ({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
                   <URLBadge href={href || '#'}>
@@ -1740,17 +1743,74 @@ function TextComponent({ text }: { text: TextBlock }) {
           {text.text}
         </div>
       ) : (
-        // Normal markdown rendering
+        // Normal markdown rendering with enhanced paragraph breaks
         <div className="prose prose-base max-w-none prose-invert">
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkBreaks]}
             components={components}
           >
-            {text.text}
+            {text.text
+              // Add extra newline before bold subheaders (** at start of line)
+              .replace(/\n(\*\*[^*]+\*\*)/g, '\n\n$1')
+              // Convert single newlines to double for proper paragraph breaks
+              // But preserve lists (-, *, digit) and code blocks
+              .replace(/(?<!\n)\n(?!\n)(?![-*\d→•]|\s{2,}|```)/g, '\n\n')
+            }
           </ReactMarkdown>
         </div>
       )}
     </div>
+  );
+}
+
+// Image Gallery component for inline image display
+function ImageGalleryComponent({ block }: { block: ImageGalleryBlock }) {
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isApplyingLogo, setIsApplyingLogo] = useState(false);
+  const { regenerateImage, applyLogoToImages } = useMediaGeneration();
+
+  const handleRegenerate = async (imageId: string) => {
+    setIsRegenerating(true);
+    try {
+      await regenerateImage(imageId);
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  const handleApplyLogo = async (imageIds: string[]) => {
+    setIsApplyingLogo(true);
+    try {
+      const result = await applyLogoToImages(imageIds, block.brandId);
+      if (result && result.totalSuccess > 0) {
+        // Logo applied successfully - could trigger refresh here
+        console.log(`Applied logo to ${result.totalSuccess} images`);
+      }
+    } finally {
+      setIsApplyingLogo(false);
+    }
+  };
+
+  // Transform block images to gallery format
+  const galleryImages = block.images.map((img) => ({
+    id: img.id,
+    prompt: img.prompt,
+    status: img.status,
+    imageUrl: img.imageUrl,
+    localPath: img.localPath,
+    errorMessage: img.errorMessage,
+    aspectRatio: img.aspectRatio,
+  }));
+
+  return (
+    <GeneratedImagesGallery
+      images={galleryImages}
+      brandId={block.brandId}
+      onRegenerate={handleRegenerate}
+      onApplyLogo={handleApplyLogo}
+      isRegenerating={isRegenerating}
+      isApplyingLogo={isApplyingLogo}
+    />
   );
 }
 
@@ -1833,6 +1893,8 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
                   return <ThinkingBlock key={index} title="Agent Girl's thoughts..." content={block.thinking} />;
                 } else if (block.type === 'long_running_command') {
                   return <LongRunningCommandComponent key={index} command={block} />;
+                } else if (block.type === 'image_gallery') {
+                  return <ImageGalleryComponent key={index} block={block} />;
                 }
                 return null;
               })}

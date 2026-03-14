@@ -1,13 +1,17 @@
 /**
  * LinkedIn Scraper - Scrape LinkedIn company pages
  *
- * Uses RapidAPI LinkedIn Scraper API for data access.
+ * Uses RapidAPI "Fresh LinkedIn Profile Data" API for data access.
+ * API: https://rapidapi.com/freshdata-freshdata-default/api/fresh-linkedin-profile-data
  * Wrapped with rate limiting and circuit breaker for resilience.
  * Note: LinkedIn is most restrictive - use sparingly.
  */
 
 import { linkedinLimiter } from './rate-limiter';
 import { createCircuitBreaker, defaultScraperBreakerOptions } from './circuit-breaker';
+
+// RapidAPI host for Fresh LinkedIn Profile Data
+const LINKEDIN_API_HOST = 'fresh-linkedin-profile-data.p.rapidapi.com';
 
 export interface LinkedInCompany {
   id: string;
@@ -37,13 +41,14 @@ export interface LinkedInPost {
 }
 
 /**
- * Extract company ID or username from LinkedIn URL
+ * Extract company ID, username, or domain from LinkedIn URL
+ * Also extracts domain from website URLs for the get-company-by-domain endpoint
  */
 export function extractLinkedInCompanyId(input: string): string {
-  // Handle URLs like https://linkedin.com/company/companyname/
-  const urlMatch = input.match(/linkedin\.com\/company\/([a-zA-Z0-9-]+)\/?/);
-  if (urlMatch) {
-    return urlMatch[1];
+  // Handle LinkedIn URLs like https://linkedin.com/company/companyname/
+  const linkedinMatch = input.match(/linkedin\.com\/company\/([a-zA-Z0-9-]+)\/?/);
+  if (linkedinMatch) {
+    return linkedinMatch[1];
   }
 
   // Handle numeric IDs
@@ -56,70 +61,117 @@ export function extractLinkedInCompanyId(input: string): string {
 }
 
 /**
- * Internal function to scrape LinkedIn company info
+ * Extract domain from a URL (for get-company-by-domain endpoint)
  */
-async function _scrapeLinkedInCompany(companyId: string): Promise<LinkedInCompany> {
+export function extractDomainFromUrl(input: string): string | null {
+  try {
+    // If it's a LinkedIn URL, we can't extract a domain
+    if (input.includes('linkedin.com')) {
+      return null;
+    }
+
+    // Add protocol if missing
+    let url = input;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
+
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Internal function to scrape LinkedIn company info
+ * Uses Fresh LinkedIn Profile Data API: /get-company-by-domain or /get-company-details
+ */
+async function _scrapeLinkedInCompany(companyIdOrDomain: string): Promise<LinkedInCompany> {
   const apiKey = process.env.RAPIDAPI_KEY;
 
   if (!apiKey) {
     throw new Error('RAPIDAPI_KEY environment variable is not set');
   }
 
-  const response = await fetch(
-    `https://linkedin-data-api.p.rapidapi.com/get-company-details?username=${encodeURIComponent(companyId)}`,
-    {
-      headers: {
-        'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': 'linkedin-data-api.p.rapidapi.com',
-      },
-    }
-  );
+  // Determine if input is a domain or company ID
+  const domain = extractDomainFromUrl(companyIdOrDomain);
+  let endpoint: string;
+
+  if (domain) {
+    // Use domain-based lookup (more reliable)
+    endpoint = `https://${LINKEDIN_API_HOST}/get-company-by-domain?domain=${encodeURIComponent(domain)}`;
+  } else {
+    // Use LinkedIn URL or company ID
+    const linkedinUrl = companyIdOrDomain.includes('linkedin.com')
+      ? companyIdOrDomain
+      : `https://www.linkedin.com/company/${companyIdOrDomain}`;
+    endpoint = `https://${LINKEDIN_API_HOST}/get-company-details?linkedin_url=${encodeURIComponent(linkedinUrl)}`;
+  }
+
+  const response = await fetch(endpoint, {
+    headers: {
+      'X-RapidAPI-Key': apiKey,
+      'X-RapidAPI-Host': LINKEDIN_API_HOST,
+    },
+  });
 
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`LinkedIn API error: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json();
+  const result = await response.json();
+  const data = result.data || result;
 
-  if (!data || data.error) {
-    throw new Error(`LinkedIn API returned error: ${data?.error || 'Unknown error'}`);
+  if (!data || result.error) {
+    throw new Error(`LinkedIn API returned error: ${result?.error || result?.message || 'Unknown error'}`);
   }
 
   return {
-    id: data.id || companyId,
-    name: data.name || '',
-    tagline: data.tagline || '',
-    description: data.description || '',
-    industry: data.industry || '',
-    companySize: data.staffCount || data.companySize || '',
-    headquarters: data.headquarter?.city
-      ? `${data.headquarter.city}, ${data.headquarter.country}`
-      : '',
-    website: data.website,
-    logoUrl: data.logo,
-    followers: data.followerCount || 0,
-    specialties: data.specialities || [],
-    foundedYear: data.foundedOn?.year,
+    id: data.company_id || data.linkedin_id || companyIdOrDomain,
+    name: data.name || data.company_name || '',
+    tagline: data.tagline || data.headline || '',
+    description: data.description || data.about || '',
+    industry: data.industry || data.industries?.[0] || '',
+    companySize: data.company_size || data.employee_range || data.staff_count_range || '',
+    headquarters: data.hq_city
+      ? `${data.hq_city}, ${data.hq_country || ''}`
+      : data.locations?.[0]?.city || '',
+    website: data.website || data.company_url,
+    logoUrl: data.logo_url || data.profile_pic_url,
+    followers: data.follower_count || data.followers_count || 0,
+    specialties: Array.isArray(data.specialties)
+      ? data.specialties
+      : typeof data.specialties === 'string'
+        ? data.specialties.split(',').map((s: string) => s.trim())
+        : data.specialities || [],
+    foundedYear: data.year_founded || data.founded_year || data.founded,
   };
 }
 
 /**
  * Internal function to scrape LinkedIn company posts
+ * Uses Fresh LinkedIn Profile Data API: /get-company-posts
  */
-async function _scrapeLinkedInPosts(companyId: string, limit = 20): Promise<LinkedInPost[]> {
+async function _scrapeLinkedInPosts(companyIdOrDomain: string, limit = 20): Promise<LinkedInPost[]> {
   const apiKey = process.env.RAPIDAPI_KEY;
 
   if (!apiKey) {
     throw new Error('RAPIDAPI_KEY environment variable is not set');
   }
 
+  // Build LinkedIn URL for the company
+  const linkedinUrl = companyIdOrDomain.includes('linkedin.com')
+    ? companyIdOrDomain
+    : `https://www.linkedin.com/company/${extractLinkedInCompanyId(companyIdOrDomain)}`;
+
   const response = await fetch(
-    `https://linkedin-data-api.p.rapidapi.com/get-company-posts?username=${encodeURIComponent(companyId)}`,
+    `https://${LINKEDIN_API_HOST}/get-company-posts?linkedin_url=${encodeURIComponent(linkedinUrl)}&type=posts`,
     {
       headers: {
         'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': 'linkedin-data-api.p.rapidapi.com',
+        'X-RapidAPI-Host': LINKEDIN_API_HOST,
       },
     }
   );
@@ -129,22 +181,23 @@ async function _scrapeLinkedInPosts(companyId: string, limit = 20): Promise<Link
     throw new Error(`LinkedIn API error: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json();
+  const result = await response.json();
+  const posts = result.data || [];
 
-  if (!data?.data) {
+  if (!Array.isArray(posts)) {
     return [];
   }
 
-  return data.data.slice(0, limit).map((post: Record<string, unknown>) => ({
-    id: post.urn as string || '',
-    text: post.text as string || '',
-    createdAt: post.postedAt as string || new Date().toISOString(),
-    likes: post.totalReactionCount as number || 0,
-    comments: post.commentsCount as number || 0,
-    shares: post.repostsCount as number || 0,
-    url: post.postUrl as string || '',
+  return posts.slice(0, limit).map((post: Record<string, unknown>) => ({
+    id: (post.urn as string) || (post.post_id as string) || '',
+    text: (post.text as string) || (post.share_content as string) || '',
+    createdAt: (post.posted_at as string) || (post.posted_date as string) || new Date().toISOString(),
+    likes: (post.num_likes as number) || (post.total_reaction_count as number) || 0,
+    comments: (post.num_comments as number) || (post.comments_count as number) || 0,
+    shares: (post.num_shares as number) || (post.reposts_count as number) || 0,
+    url: (post.post_url as string) || (post.share_url as string) || '',
     mediaType: post.images ? 'image' : post.video ? 'video' : post.article ? 'article' : undefined,
-    mediaUrl: (post.images as unknown[])?.[0] as string || post.video as string,
+    mediaUrl: (post.images as string[]) ?.[0] || (post.video_url as string),
   }));
 }
 

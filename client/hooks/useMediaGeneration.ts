@@ -140,6 +140,21 @@ export interface VisualStyleInput {
   negativePrompts?: string[];
 }
 
+export interface ApplyLogoOptions {
+  logoPosition?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
+  sizePercent?: number;
+  opacity?: number;
+  margin?: number;
+  preset?: string;
+}
+
+export interface LogoApplicationResult {
+  imageId: string;
+  success: boolean;
+  outputUrl?: string;
+  error?: string;
+}
+
 // ============================================================================
 // HOOK
 // ============================================================================
@@ -641,6 +656,67 @@ export function useMediaGeneration() {
     return null;
   }, [fetchVideo]);
 
+  // ============================================================================
+  // LOGO APPLICATION
+  // ============================================================================
+
+  /**
+   * Apply logo to multiple images
+   */
+  const applyLogoToImages = useCallback(async (
+    imageIds: string[],
+    brandId: string,
+    options?: ApplyLogoOptions
+  ): Promise<{ results: LogoApplicationResult[]; totalSuccess: number } | null> => {
+    try {
+      const response = await fetch(`${API_BASE}/images/batch-apply-logo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageIds,
+          brandId,
+          ...options,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return (await response.json()) as { results: LogoApplicationResult[]; totalSuccess: number };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to apply logo');
+      return null;
+    }
+  }, []);
+
+  /**
+   * Apply logo to a single image
+   */
+  const applyLogoToImage = useCallback(async (
+    imageId: string,
+    options?: ApplyLogoOptions
+  ): Promise<{ outputUrl: string } | null> => {
+    try {
+      const response = await fetch(`${API_BASE}/images/${imageId}/apply-logo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options || {}),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return (await response.json()) as { outputUrl: string };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to apply logo');
+      return null;
+    }
+  }, []);
+
   return {
     // State
     isGenerating,
@@ -678,5 +754,9 @@ export function useMediaGeneration() {
     fetchVideoProviders,
     fetchAspectRatios,
     fetchStylePresets,
+
+    // Logo application
+    applyLogoToImages,
+    applyLogoToImage,
   };
 }

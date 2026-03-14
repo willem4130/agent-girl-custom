@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * Reference Materials Panel - Manage brand reference materials
+ * Supports URL, text, file, and project folder references
  */
 
 import React, { useState } from 'react';
@@ -20,6 +21,8 @@ import {
   Loader2,
   X,
   Tag,
+  File,
+  Search,
 } from 'lucide-react';
 
 export type MaterialType = 'url' | 'file' | 'text' | 'project';
@@ -32,30 +35,84 @@ export interface ReferenceMaterial {
   content: string;
   source_url?: string;
   tags: string[];
+  // File reference fields
+  file_path?: string;
+  is_folder?: number;
+  folder_depth?: number;
+  file_patterns?: string;
   created_at: string;
 }
 
+// Extended interface for creating new references
+export interface NewReferenceMaterial {
+  material_type: MaterialType;
+  title: string;
+  content: string;
+  source_url?: string;
+  tags: string[];
+  // File reference fields
+  filePath?: string;
+  filePaths?: string[]; // For multiple file selection
+  isFolder?: boolean;
+  folderDepth?: number;
+  filePatterns?: string[];
+}
+
+// File System Access API types (for TypeScript)
+interface FileSystemFileHandle {
+  name: string;
+  kind: 'file';
+  getFile(): Promise<File>;
+}
+
+interface FileSystemDirectoryHandle {
+  name: string;
+  kind: 'directory';
+}
+
+declare global {
+  interface Window {
+    showOpenFilePicker?: (options?: {
+      multiple?: boolean;
+      types?: Array<{
+        description?: string;
+        accept: Record<string, string[]>;
+      }>;
+    }) => Promise<FileSystemFileHandle[]>;
+    showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
+  }
+}
+
 interface ReferenceMaterialsPanelProps {
-  brandId: string; // Used for future features like URL scraping
+  brandId: string;
   materials: ReferenceMaterial[];
   isLoading?: boolean;
-  onAdd: (material: Omit<ReferenceMaterial, 'id' | 'brand_id' | 'created_at'>) => Promise<void>;
+  onAdd: (material: NewReferenceMaterial) => Promise<void>;
   onDelete: (materialId: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
 }
 
 const MATERIAL_TYPE_CONFIG: Record<
   MaterialType,
-  { icon: React.ElementType; label: string; color: string }
+  { icon: React.ElementType; label: string; color: string; description: string }
 > = {
-  url: { icon: Link, label: 'URL', color: '#3B82F6' },
-  file: { icon: FileText, label: 'File', color: '#10B981' },
-  text: { icon: MessageSquare, label: 'Text', color: '#F59E0B' },
-  project: { icon: FolderOpen, label: 'Project', color: '#8B5CF6' },
+  url: { icon: Link, label: 'URL', color: '#3B82F6', description: 'Webpage or article link' },
+  file: { icon: FileText, label: 'File', color: '#10B981', description: 'Local file path' },
+  text: { icon: MessageSquare, label: 'Text', color: '#F59E0B', description: 'Pasted content' },
+  project: { icon: FolderOpen, label: 'Folder', color: '#8B5CF6', description: 'Project folder' },
 };
 
+// Common file patterns for quick selection
+const COMMON_FILE_PATTERNS = [
+  { label: 'Markdown', patterns: ['*.md'] },
+  { label: 'Text', patterns: ['*.txt'] },
+  { label: 'Code', patterns: ['*.ts', '*.tsx', '*.js', '*.jsx'] },
+  { label: 'Config', patterns: ['*.json', '*.yaml', '*.yml'] },
+  { label: 'Styles', patterns: ['*.css'] },
+];
+
 export function ReferenceMaterialsPanel({
-  brandId: _brandId, // Reserved for future URL auto-scraping feature
+  brandId: _brandId,
   materials,
   isLoading,
   onAdd,
@@ -72,21 +129,111 @@ export function ReferenceMaterialsPanel({
   const [formContent, setFormContent] = useState('');
   const [formUrl, setFormUrl] = useState('');
   const [formTags, setFormTags] = useState('');
+  // File reference form state
+  const [formFilePath, setFormFilePath] = useState('');
+  const [formFilePaths, setFormFilePaths] = useState<string[]>([]); // Multiple files
+  const [formIsFolder, setFormIsFolder] = useState(false);
+  const [formFolderDepth, setFormFolderDepth] = useState(3);
+  const [formFilePatterns, setFormFilePatterns] = useState<string[]>([]);
 
   const resetForm = () => {
     setFormTitle('');
     setFormContent('');
     setFormUrl('');
     setFormTags('');
+    setFormFilePath('');
+    setFormFilePaths([]);
+    setFormIsFolder(false);
+    setFormFolderDepth(3);
+    setFormFilePatterns([]);
     setAddType('url');
   };
 
+  // File System Access API handlers
+  const handleBrowseFiles = async () => {
+    if (!window.showOpenFilePicker) {
+      alert('File picker not supported in this browser. Please enter the path manually.');
+      return;
+    }
+
+    try {
+      const handles = await window.showOpenFilePicker({
+        multiple: true,
+        types: [
+          {
+            description: 'Documents',
+            accept: {
+              'text/*': ['.txt', '.md', '.html', '.css', '.json', '.xml', '.csv'],
+              'application/pdf': ['.pdf'],
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+              'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+              'application/msword': ['.doc'],
+              'application/vnd.ms-excel': ['.xls'],
+              'application/vnd.ms-powerpoint': ['.ppt'],
+            },
+          },
+        ],
+      });
+
+      // Get file names (full paths not available in browser for security)
+      const names = handles.map((h) => h.name);
+
+      if (names.length === 1) {
+        // Single file - user needs to provide full path
+        setFormFilePath(names[0]);
+        if (!formTitle) {
+          setFormTitle(names[0].replace(/\.[^/.]+$/, ''));
+        }
+      } else {
+        // Multiple files - store names, user provides base path
+        setFormFilePaths(names);
+        if (!formTitle) {
+          setFormTitle(`${names.length} files selected`);
+        }
+      }
+    } catch (err) {
+      // User cancelled or error
+      if ((err as Error).name !== 'AbortError') {
+        console.error('File picker error:', err);
+      }
+    }
+  };
+
+  const handleBrowseFolder = async () => {
+    if (!window.showDirectoryPicker) {
+      alert('Folder picker not supported in this browser. Please enter the path manually.');
+      return;
+    }
+
+    try {
+      const handle = await window.showDirectoryPicker();
+      // We get the folder name but not the full path (browser security)
+      setFormFilePath(handle.name);
+      if (!formTitle) {
+        setFormTitle(handle.name);
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('Folder picker error:', err);
+      }
+    }
+  };
+
+  const isFileType = addType === 'file' || addType === 'project';
+  const hasFilePath = formFilePath.trim().length > 0;
+
+  // For file types with a path, content is optional
+  const canSubmit =
+    formTitle.trim() &&
+    (isFileType ? hasFilePath : formContent.trim());
+
   const handleAdd = async () => {
-    if (!formTitle.trim() || !formContent.trim()) return;
+    if (!canSubmit) return;
 
     setIsAdding(true);
     try {
-      await onAdd({
+      const material: NewReferenceMaterial = {
         material_type: addType,
         title: formTitle.trim(),
         content: formContent.trim(),
@@ -95,7 +242,19 @@ export function ReferenceMaterialsPanel({
           .split(',')
           .map((t) => t.trim())
           .filter(Boolean),
-      });
+      };
+
+      // Add file reference fields for file/project types
+      if (isFileType && hasFilePath) {
+        material.filePath = formFilePath.trim();
+        material.isFolder = addType === 'project' || formIsFolder;
+        if (material.isFolder) {
+          material.folderDepth = formFolderDepth;
+          material.filePatterns = formFilePatterns.length > 0 ? formFilePatterns : undefined;
+        }
+      }
+
+      await onAdd(material);
       resetForm();
       setShowAddModal(false);
     } finally {
@@ -109,6 +268,15 @@ export function ReferenceMaterialsPanel({
       await onDelete(materialId);
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const toggleFilePattern = (patterns: string[]) => {
+    const hasAll = patterns.every((p) => formFilePatterns.includes(p));
+    if (hasAll) {
+      setFormFilePatterns(formFilePatterns.filter((p) => !patterns.includes(p)));
+    } else {
+      setFormFilePatterns([...new Set([...formFilePatterns, ...patterns])]);
     }
   };
 
@@ -188,6 +356,10 @@ export function ReferenceMaterialsPanel({
                   {materials.map((material) => {
                     const config = MATERIAL_TYPE_CONFIG[material.material_type];
                     const Icon = config.icon;
+                    const hasFileRef = !!material.file_path;
+                    const tags = typeof material.tags === 'string'
+                      ? JSON.parse(material.tags) as string[]
+                      : material.tags;
 
                     return (
                       <div
@@ -232,9 +404,39 @@ export function ReferenceMaterialsPanel({
                             {material.title}
                           </div>
 
-                          {material.tags.length > 0 && (
+                          {/* File path indicator */}
+                          {hasFileRef && (
+                            <div
+                              style={{
+                                fontSize: '11px',
+                                color: 'rgba(255, 255, 255, 0.4)',
+                                marginTop: '2px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <File style={{ width: 10, height: 10 }} />
+                              <span
+                                style={{
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {material.file_path}
+                              </span>
+                              {material.is_folder === 1 && (
+                                <span style={{ color: 'rgba(255, 255, 255, 0.3)' }}>
+                                  (depth: {material.folder_depth ?? 3})
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {tags.length > 0 && (
                             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
-                              {material.tags.slice(0, 3).map((tag, i) => (
+                              {tags.slice(0, 3).map((tag, i) => (
                                 <span
                                   key={i}
                                   style={{
@@ -293,7 +495,7 @@ export function ReferenceMaterialsPanel({
                     marginBottom: '12px',
                   }}
                 >
-                  No reference materials yet. Add URLs, text snippets, or documents.
+                  No reference materials yet. Add URLs, files, or text snippets.
                 </div>
               )}
 
@@ -355,10 +557,13 @@ export function ReferenceMaterialsPanel({
             style={{
               width: '90%',
               maxWidth: '500px',
+              maxHeight: '85vh',
               backgroundColor: 'rgb(38, 40, 42)',
               borderRadius: '16px',
               border: '1px solid rgba(255, 255, 255, 0.1)',
               overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
             }}
           >
             {/* Modal Header */}
@@ -369,6 +574,7 @@ export function ReferenceMaterialsPanel({
                 justifyContent: 'space-between',
                 padding: '16px 20px',
                 borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                flexShrink: 0,
               }}
             >
               <span style={{ fontSize: '16px', fontWeight: 600, color: 'white' }}>Add Reference Material</span>
@@ -387,7 +593,7 @@ export function ReferenceMaterialsPanel({
             </div>
 
             {/* Modal Content */}
-            <div style={{ padding: '20px' }}>
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
               {/* Type Selector */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255, 255, 255, 0.7)', display: 'block', marginBottom: '8px' }}>
@@ -402,10 +608,21 @@ export function ReferenceMaterialsPanel({
                       return (
                         <button
                           key={type}
-                          onClick={() => setAddType(type)}
+                          onClick={() => {
+                            setAddType(type);
+                            // Reset file-specific fields when changing type
+                            if (type !== 'file' && type !== 'project') {
+                              setFormFilePath('');
+                              setFormIsFolder(false);
+                              setFormFilePatterns([]);
+                            }
+                            if (type === 'project') {
+                              setFormIsFolder(true);
+                            }
+                          }}
                           style={{
                             flex: 1,
-                            padding: '10px',
+                            padding: '10px 6px',
                             borderRadius: '8px',
                             border: `1px solid ${isSelected ? config.color : 'rgba(255, 255, 255, 0.1)'}`,
                             backgroundColor: isSelected ? `${config.color}15` : 'transparent',
@@ -426,6 +643,9 @@ export function ReferenceMaterialsPanel({
                     }
                   )}
                 </div>
+                <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.4)', marginTop: '6px' }}>
+                  {MATERIAL_TYPE_CONFIG[addType].description}
+                </div>
               </div>
 
               {/* Title */}
@@ -437,7 +657,7 @@ export function ReferenceMaterialsPanel({
                   type="text"
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
-                  placeholder="E.g., Competitor landing page"
+                  placeholder={isFileType ? 'E.g., Project docs' : 'E.g., Competitor landing page'}
                   style={{
                     width: '100%',
                     padding: '10px 12px',
@@ -447,6 +667,7 @@ export function ReferenceMaterialsPanel({
                     color: 'white',
                     fontSize: '14px',
                     outline: 'none',
+                    boxSizing: 'border-box',
                   }}
                 />
               </div>
@@ -471,25 +692,224 @@ export function ReferenceMaterialsPanel({
                       color: 'white',
                       fontSize: '14px',
                       outline: 'none',
+                      boxSizing: 'border-box',
                     }}
                   />
                 </div>
               )}
 
+              {/* File Path (if type is file or project) */}
+              {isFileType && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255, 255, 255, 0.7)', display: 'block', marginBottom: '6px' }}>
+                    {addType === 'project' ? 'Folder Path' : 'File Path(s)'}
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      value={formFilePath}
+                      onChange={(e) => setFormFilePath(e.target.value)}
+                      placeholder={addType === 'project' ? '/path/to/project' : '/path/to/file.md'}
+                      style={{
+                        flex: 1,
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                        color: 'white',
+                        fontSize: '14px',
+                        outline: 'none',
+                        fontFamily: 'monospace',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={addType === 'project' ? handleBrowseFolder : handleBrowseFiles}
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        color: 'rgba(255, 255, 255, 0.8)',
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 150ms',
+                        whiteSpace: 'nowrap',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                      }}
+                    >
+                      <Search style={{ width: 14, height: 14 }} />
+                      Browse
+                    </button>
+                  </div>
+
+                  {/* Show selected files for multi-select */}
+                  {formFilePaths.length > 0 && (
+                    <div style={{ marginTop: '8px' }}>
+                      <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.5)', marginBottom: '4px' }}>
+                        Selected files (enter base path above):
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {formFilePaths.map((name, i) => (
+                          <span
+                            key={i}
+                            style={{
+                              fontSize: '11px',
+                              backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                              color: 'rgba(16, 185, 129, 0.9)',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            {name}
+                            <button
+                              type="button"
+                              onClick={() => setFormFilePaths(formFilePaths.filter((_, idx) => idx !== i))}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                padding: 0,
+                                cursor: 'pointer',
+                                color: 'rgba(16, 185, 129, 0.7)',
+                                display: 'flex',
+                              }}
+                            >
+                              <X style={{ width: 10, height: 10 }} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.4)', marginTop: '6px' }}>
+                    {addType === 'file'
+                      ? 'Supports: .txt, .md, .html, .pdf, .docx, .xlsx, .pptx, .json, .csv'
+                      : 'Content will be read fresh each time (not cached)'}
+                  </div>
+                </div>
+              )}
+
+              {/* Is Folder toggle (only for file type, project is always folder) */}
+              {addType === 'file' && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formIsFolder}
+                      onChange={(e) => setFormIsFolder(e.target.checked)}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.8)' }}>
+                      This is a folder (read all matching files)
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              {/* Folder options (when isFolder or project type) */}
+              {isFileType && (addType === 'project' || formIsFolder) && (
+                <>
+                  {/* Folder Depth */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255, 255, 255, 0.7)', display: 'block', marginBottom: '6px' }}>
+                      Max Folder Depth: {formFolderDepth}
+                    </label>
+                    <input
+                      type="range"
+                      min={1}
+                      max={5}
+                      value={formFolderDepth}
+                      onChange={(e) => setFormFolderDepth(parseInt(e.target.value))}
+                      style={{ width: '100%', cursor: 'pointer' }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'rgba(255, 255, 255, 0.4)' }}>
+                      <span>1 (shallow)</span>
+                      <span>5 (deep)</span>
+                    </div>
+                  </div>
+
+                  {/* File Patterns */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255, 255, 255, 0.7)', display: 'block', marginBottom: '8px' }}>
+                      File Types to Include
+                    </label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {COMMON_FILE_PATTERNS.map(({ label, patterns }) => {
+                        const isSelected = patterns.every((p) => formFilePatterns.includes(p));
+                        return (
+                          <button
+                            key={label}
+                            onClick={() => toggleFilePattern(patterns)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: `1px solid ${isSelected ? 'rgba(139, 92, 246, 0.5)' : 'rgba(255, 255, 255, 0.1)'}`,
+                              backgroundColor: isSelected ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+                              color: isSelected ? 'white' : 'rgba(255, 255, 255, 0.6)',
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              transition: 'all 150ms',
+                            }}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {formFilePatterns.length === 0 && (
+                      <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.4)', marginTop: '6px' }}>
+                        No filter = all supported files (.md, .txt, .ts, .js, .json, etc.)
+                      </div>
+                    )}
+                    {formFilePatterns.length > 0 && (
+                      <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.5)', marginTop: '6px' }}>
+                        Patterns: {formFilePatterns.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
               {/* Content */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255, 255, 255, 0.7)', display: 'block', marginBottom: '6px' }}>
-                  {addType === 'url' ? 'Notes (or paste content)' : 'Content'}
+                  {isFileType && hasFilePath
+                    ? 'Notes (optional)'
+                    : addType === 'url'
+                    ? 'Notes (or paste content)'
+                    : 'Content'}
                 </label>
                 <textarea
                   value={formContent}
                   onChange={(e) => setFormContent(e.target.value)}
                   placeholder={
-                    addType === 'url'
+                    isFileType && hasFilePath
+                      ? 'Optional notes about this reference...'
+                      : addType === 'url'
                       ? 'Add notes or paste the page content here...'
                       : 'Paste or type the content here...'
                   }
-                  rows={5}
+                  rows={isFileType && hasFilePath ? 2 : 5}
                   style={{
                     width: '100%',
                     padding: '10px 12px',
@@ -500,6 +920,7 @@ export function ReferenceMaterialsPanel({
                     fontSize: '14px',
                     outline: 'none',
                     resize: 'vertical',
+                    boxSizing: 'border-box',
                   }}
                 />
               </div>
@@ -524,6 +945,7 @@ export function ReferenceMaterialsPanel({
                     color: 'white',
                     fontSize: '14px',
                     outline: 'none',
+                    boxSizing: 'border-box',
                   }}
                 />
               </div>
@@ -548,7 +970,7 @@ export function ReferenceMaterialsPanel({
                 </button>
                 <button
                   onClick={handleAdd}
-                  disabled={isAdding || !formTitle.trim() || !formContent.trim()}
+                  disabled={isAdding || !canSubmit}
                   style={{
                     flex: 1,
                     padding: '12px',
@@ -558,8 +980,8 @@ export function ReferenceMaterialsPanel({
                     color: '#1a1a1a',
                     fontSize: '14px',
                     fontWeight: 600,
-                    cursor: isAdding ? 'not-allowed' : 'pointer',
-                    opacity: isAdding || !formTitle.trim() || !formContent.trim() ? 0.5 : 1,
+                    cursor: isAdding || !canSubmit ? 'not-allowed' : 'pointer',
+                    opacity: isAdding || !canSubmit ? 0.5 : 1,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',

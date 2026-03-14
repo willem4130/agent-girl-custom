@@ -1714,3 +1714,48 @@
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ========================================
+   PROSE TYPOGRAPHY - Enhanced spacing for copywriting
+   ======================================== */
+
+/* Add spacing between paragraphs */
+.prose p {
+  margin-bottom: 1em;
+}
+
+/* Add spacing before bold text (used as subheaders) */
+.prose strong {
+  display: inline;
+}
+
+/* When bold is at start of line, treat as subheader with spacing */
+.prose p > strong:first-child,
+.prose > strong {
+  display: block;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+/* First paragraph after heading shouldn't have top margin */
+.prose > p:first-child,
+.prose > strong:first-child {
+  margin-top: 0;
+}
+
+/* Bullet lists with proper spacing */
+.prose ul,
+.prose ol {
+  margin-top: 0.75em;
+  margin-bottom: 1em;
+  padding-left: 1.5em;
+}
+
+.prose li {
+  margin-bottom: 0.5em;
+}
+
+/* Arrows and special characters as list items */
+.prose p:has(→) {
+  padding-left: 0.5em;
+}

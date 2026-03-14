@@ -1,0 +1,38 @@
+{
+  "created": "2026-01-30",
+  "lastUpdated": "2026-01-30",
+  "projectType": "bun-react-spa",
+  "serverPort": 3001,
+  "knownIssues": [
+    {
+      "type": "info",
+      "message": "Download the React DevTools for a better development experience",
+      "status": "accepted",
+      "reason": "Expected React development message"
+    }
+  ],
+  "modes": [
+    "general",
+    "coder",
+    "spark",
+    "intense-research",
+    "copywriting",
+    "media"
+  ],
+  "keyComponents": [
+    "ChatContainer",
+    "ModeSelector",
+    "Sidebar",
+    "MessageList",
+    "ChatInput",
+    "CopyLibraryPanel",
+    "WorkflowCanvas",
+    "ImageGallery",
+    "VideoGallery"
+  ],
+  "baselineSnapshot": {
+    "errors": 0,
+    "warnings": 0,
+    "pageTitle": "Agent Girl"
+  }
+}

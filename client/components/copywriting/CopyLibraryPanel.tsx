@@ -51,11 +51,11 @@ function CopyFormatButtons({ copyId, onCopy }: CopyFormatButtonsProps) {
     }
   };
 
-  const formats: { format: CopyFormat; label: string; color: string }[] = [
-    { format: 'wordpress', label: 'WordPress', color: '#21759B' },
-    { format: 'linkedin', label: 'LinkedIn', color: '#0A66C2' },
-    { format: 'markdown', label: 'Markdown', color: '#83CD29' },
-    { format: 'raw', label: 'Plain', color: 'rgba(255, 255, 255, 0.6)' },
+  const formats: { format: CopyFormat; label: string }[] = [
+    { format: 'wordpress', label: 'WordPress' },
+    { format: 'linkedin', label: 'LinkedIn' },
+    { format: 'markdown', label: 'Markdown' },
+    { format: 'raw', label: 'Plain' },
   ];
 
   return (
@@ -64,22 +64,19 @@ function CopyFormatButtons({ copyId, onCopy }: CopyFormatButtonsProps) {
         display: 'flex',
         alignItems: 'center',
         gap: '6px',
-        padding: '8px 12px',
-        backgroundColor: 'rgba(0, 0, 0, 0.2)',
-        borderRadius: '8px',
         marginBottom: '12px',
       }}
     >
       <span
         style={{
           fontSize: '11px',
-          color: 'rgba(255, 255, 255, 0.5)',
+          color: 'rgba(255, 255, 255, 0.4)',
           marginRight: '4px',
         }}
       >
         Copy as:
       </span>
-      {formats.map(({ format, label, color }) => (
+      {formats.map(({ format, label }) => (
         <button
           key={format}
           onClick={() => handleCopy(format)}
@@ -87,31 +84,26 @@ function CopyFormatButtons({ copyId, onCopy }: CopyFormatButtonsProps) {
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
-            padding: '4px 10px',
+            padding: '4px 8px',
             fontSize: '11px',
             fontWeight: 500,
-            color: copiedFormat === format ? '#10B981' : color,
-            backgroundColor:
-              copiedFormat === format
-                ? 'rgba(16, 185, 129, 0.1)'
-                : 'rgba(255, 255, 255, 0.05)',
-            border: `1px solid ${
-              copiedFormat === format
-                ? 'rgba(16, 185, 129, 0.3)'
-                : 'rgba(255, 255, 255, 0.1)'
-            }`,
+            color: copiedFormat === format ? '#10B981' : 'rgba(255, 255, 255, 0.6)',
+            backgroundColor: copiedFormat === format
+              ? 'rgba(16, 185, 129, 0.1)'
+              : 'rgba(255, 255, 255, 0.04)',
+            border: 'none',
             borderRadius: '4px',
             cursor: 'pointer',
             transition: 'all 150ms',
           }}
           onMouseEnter={(e) => {
             if (copiedFormat !== format) {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
             }
           }}
           onMouseLeave={(e) => {
             if (copiedFormat !== format) {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.04)';
             }
           }}
         >
@@ -133,7 +125,6 @@ interface SectionItemProps {
   onToggle: () => void;
   onGenerateImage: () => void;
   getSectionTypeLabel: (type: CopySection['section_type']) => string;
-  getSectionTypeColor: (type: CopySection['section_type']) => string;
   linkedImageUrl?: string;
 }
 
@@ -143,7 +134,6 @@ function SectionItem({
   onToggle,
   onGenerateImage,
   getSectionTypeLabel,
-  getSectionTypeColor,
   linkedImageUrl,
 }: SectionItemProps) {
   const [showConcept, setShowConcept] = useState(false);
@@ -151,11 +141,10 @@ function SectionItem({
   return (
     <div
       style={{
-        backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.02)',
-        border: isSelected ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '8px',
         padding: '12px',
-        transition: 'all 150ms',
+        backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.04)' : 'transparent',
+        borderRadius: '8px',
+        transition: 'background-color 150ms',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
@@ -167,25 +156,24 @@ function SectionItem({
             border: 'none',
             padding: 0,
             cursor: 'pointer',
-            color: isSelected ? '#3B82F6' : 'rgba(255, 255, 255, 0.5)',
+            color: isSelected ? 'white' : 'rgba(255, 255, 255, 0.3)',
             marginTop: '2px',
           }}
         >
-          {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+          {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
         </button>
 
         {/* Content */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Type badge and actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+          {/* Type label */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
             <span
-              className={getSectionTypeColor(section.section_type)}
               style={{
                 fontSize: '10px',
-                fontWeight: 600,
-                padding: '2px 8px',
-                borderRadius: '4px',
+                fontWeight: 500,
+                color: 'rgba(255, 255, 255, 0.5)',
                 textTransform: 'uppercase',
+                letterSpacing: '0.03em',
               }}
             >
               {getSectionTypeLabel(section.section_type)}
@@ -194,14 +182,14 @@ function SectionItem({
               <span
                 style={{
                   fontSize: '10px',
-                  color: '#10B981',
+                  color: 'rgba(255, 255, 255, 0.4)',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
+                  gap: '3px',
                 }}
               >
                 <ImageIcon size={10} />
-                Linked
+                linked
               </span>
             )}
           </div>
@@ -236,22 +224,21 @@ function SectionItem({
                   alignItems: 'center',
                   gap: '4px',
                   fontSize: '11px',
-                  color: '#FFE66D',
+                  color: 'rgba(255, 255, 255, 0.5)',
                 }}
               >
-                <Sparkles size={12} />
+                <Sparkles size={11} />
                 Visual concept
-                {showConcept ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                {showConcept ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
               </button>
               {showConcept && (
                 <p
                   style={{
                     fontSize: '11px',
-                    color: 'rgba(255, 255, 255, 0.6)',
+                    color: 'rgba(255, 255, 255, 0.5)',
                     margin: '6px 0 0',
-                    padding: '8px',
-                    backgroundColor: 'rgba(255, 230, 109, 0.05)',
-                    borderRadius: '6px',
+                    paddingLeft: '12px',
+                    borderLeft: '2px solid rgba(255, 255, 255, 0.1)',
                     lineHeight: 1.5,
                   }}
                 >
@@ -271,21 +258,27 @@ function SectionItem({
                 onGenerateImage();
               }}
               style={{
-                padding: '6px 12px',
+                padding: '5px 10px',
                 fontSize: '11px',
                 fontWeight: 500,
-                color: '#3B82F6',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                border: '1px solid rgba(59, 130, 246, 0.2)',
-                borderRadius: '6px',
+                color: 'rgba(255, 255, 255, 0.7)',
+                backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                border: 'none',
+                borderRadius: '4px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
               }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)';
+              }}
             >
-              <Wand2 size={12} />
-              Generate Image
+              <Wand2 size={11} />
+              Generate
             </button>
           </div>
         </div>
@@ -294,8 +287,8 @@ function SectionItem({
         {linkedImageUrl && (
           <div
             style={{
-              width: '60px',
-              height: '60px',
+              width: '48px',
+              height: '48px',
               borderRadius: '6px',
               overflow: 'hidden',
               flexShrink: 0,
@@ -330,20 +323,20 @@ interface CopyCardProps {
   onCopyFormat: (copyId: string, format: CopyFormat) => Promise<boolean>;
   onExport: (copyId: string, title: string) => void;
   getSectionTypeLabel: (type: CopySection['section_type']) => string;
-  getSectionTypeColor: (type: CopySection['section_type']) => string;
+  mediaMode?: boolean;
+  onSelectForMedia?: (copy: { id: string; title: string; content: string; platform: string }) => void;
+  isSelectedForMedia?: boolean;
 }
 
 /**
  * Generate a descriptive title from the copy content.
- * Prefers headline section > first line of copy > content type fallback.
  */
 function generateCopyTitle(copy: CopyWithMedia): string {
   // First, try to find a headline section
   const headlineSection = copy.sections.find(s => s.section_type === 'headline');
   if (headlineSection?.content) {
     const headline = headlineSection.content.trim();
-    // Truncate if too long
-    return headline.length > 60 ? headline.slice(0, 57) + '...' : headline;
+    return headline.length > 80 ? headline.slice(0, 77) + '...' : headline;
   }
 
   // Second, extract first meaningful line from copy_text
@@ -354,19 +347,16 @@ function generateCopyTitle(copy: CopyWithMedia): string {
       .filter(l => l.length > 0);
 
     if (lines.length > 0) {
-      // Skip lines that look like meta info (e.g., "Subject:", "Caption:")
       const firstLine = lines.find(l => !l.includes(':') || l.length > 50) || lines[0];
-      // Clean up markdown
       const cleaned = firstLine
-        .replace(/^#+\s*/, '') // Remove markdown headers
-        .replace(/\*+/g, '') // Remove bold/italic markers
-        .replace(/^\[.*?\]\s*/, ''); // Remove image references
+        .replace(/^#+\s*/, '')
+        .replace(/\*+/g, '')
+        .replace(/^\[.*?\]\s*/, '');
 
-      return cleaned.length > 60 ? cleaned.slice(0, 57) + '...' : cleaned;
+      return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
     }
   }
 
-  // Fallback to content type + platform
   return `${copy.content_type} - ${copy.platform}`;
 }
 
@@ -383,19 +373,20 @@ function CopyCard({
   onCopyFormat,
   onExport,
   getSectionTypeLabel,
-  getSectionTypeColor,
+  mediaMode = false,
+  onSelectForMedia,
+  isSelectedForMedia = false,
 }: CopyCardProps) {
   const sectionCount = copy.sections.length;
   const imageCount = copy.images.length;
   const selectedCount = copy.sections.filter(s => selectedSectionIds.has(s.id)).length;
+  const title = generateCopyTitle(copy);
 
-  // Get image URL for a section - prefer local path over temp URL
+  // Get image URL for a section
   const getLinkedImageUrl = (section: CopySection) => {
     if (!section.image_id) return undefined;
     const image = copy.images.find(img => img.id === section.image_id);
     if (!image) return undefined;
-
-    // Prefer local file serving endpoint if local_path exists
     if (image.local_path) {
       const filename = image.local_path.split('/').pop();
       return `/api/media/files/images/${filename}`;
@@ -406,13 +397,10 @@ function CopyCard({
   return (
     <div
       style={{
-        backgroundColor: 'rgb(38, 40, 42)',
-        borderRadius: '12px',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        overflow: 'hidden',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
       }}
     >
-      {/* Header */}
+      {/* Header - Clickable row */}
       <div
         role="button"
         tabIndex={0}
@@ -424,130 +412,130 @@ function CopyCard({
           }
         }}
         style={{
-          width: '100%',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '14px 16px',
-          backgroundColor: 'transparent',
+          alignItems: 'flex-start',
+          gap: '12px',
+          padding: '14px 0',
           cursor: 'pointer',
           transition: 'background-color 150ms',
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
+          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)';
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.backgroundColor = 'transparent';
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-          <FileText size={18} style={{ color: 'rgba(255, 255, 255, 0.6)', flexShrink: 0 }} />
-          <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
-            <div
-              style={{
-                fontSize: '13px',
-                fontWeight: 600,
-                color: 'white',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-              title={generateCopyTitle(copy)}
-            >
-              {generateCopyTitle(copy)}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-              <span
-                style={{
-                  fontSize: '10px',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                  color: '#60A5FA',
-                  textTransform: 'capitalize',
-                }}
-              >
-                {copy.content_type}
-              </span>
-              <span
-                style={{
-                  fontSize: '10px',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  textTransform: 'capitalize',
-                }}
-              >
-                {copy.platform}
-              </span>
-              <span style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.4)' }}>
-                {new Date(copy.created_at).toLocaleDateString()}
-              </span>
-            </div>
+        {/* Icon */}
+        <FileText size={16} style={{ color: 'rgba(255, 255, 255, 0.4)', flexShrink: 0, marginTop: '2px' }} />
+
+        {/* Content */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Title - full width, wraps if needed */}
+          <div
+            style={{
+              fontSize: '13px',
+              fontWeight: 500,
+              color: 'rgba(255, 255, 255, 0.9)',
+              lineHeight: 1.4,
+              marginBottom: '4px',
+            }}
+          >
+            {title}
+          </div>
+
+          {/* Meta row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: '11px',
+              color: 'rgba(255, 255, 255, 0.4)',
+              textTransform: 'capitalize',
+            }}>
+              {copy.platform}
+            </span>
+            <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.25)' }}>·</span>
+            <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.4)' }}>
+              {new Date(copy.created_at).toLocaleDateString()}
+            </span>
+            {(sectionCount > 0 || imageCount > 0) && (
+              <>
+                <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.25)' }}>·</span>
+                <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.4)' }}>
+                  {sectionCount > 0 && `${sectionCount} sections`}
+                  {sectionCount > 0 && imageCount > 0 && ', '}
+                  {imageCount > 0 && `${imageCount} images`}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Stats badges */}
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <span
-              style={{
-                fontSize: '10px',
-                padding: '2px 8px',
-                borderRadius: '10px',
-                backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                color: '#8B5CF6',
-              }}
-            >
-              {sectionCount} sections
-            </span>
-            <span
-              style={{
-                fontSize: '10px',
-                padding: '2px 8px',
-                borderRadius: '10px',
-                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                color: '#10B981',
-              }}
-            >
-              {imageCount} images
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Export Button */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onExport(copy.id, generateCopyTitle(copy));
-              }}
-              style={{
-                padding: '6px',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                border: '1px solid rgba(59, 130, 246, 0.2)',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              title="Export copy"
-            >
-              <Download size={14} style={{ color: '#3B82F6' }} />
-            </button>
-            {isExpanded ? (
-              <ChevronUp size={18} style={{ color: 'rgba(255, 255, 255, 0.5)' }} />
+        {/* Media Mode: Select for Media Button */}
+        {mediaMode && onSelectForMedia && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectForMedia({
+                id: copy.id,
+                title,
+                content: copy.copy_text,
+                platform: copy.platform,
+              });
+            }}
+            style={{
+              flexShrink: 0,
+              padding: '6px 12px',
+              fontSize: '11px',
+              fontWeight: 600,
+              color: isSelectedForMedia ? '#1a1a1a' : 'rgba(59, 130, 246, 0.9)',
+              backgroundColor: isSelectedForMedia ? 'rgba(59, 130, 246, 0.9)' : 'rgba(59, 130, 246, 0.1)',
+              border: `1px solid ${isSelectedForMedia ? 'transparent' : 'rgba(59, 130, 246, 0.3)'}`,
+              borderRadius: '6px',
+              cursor: 'pointer',
+              transition: 'all 150ms',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+            onMouseEnter={(e) => {
+              if (!isSelectedForMedia) {
+                e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isSelectedForMedia) {
+                e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+              }
+            }}
+          >
+            {isSelectedForMedia ? (
+              <>
+                <Check size={12} />
+                Selected
+              </>
             ) : (
-              <ChevronDown size={18} style={{ color: 'rgba(255, 255, 255, 0.5)' }} />
+              <>
+                <ImageIcon size={12} />
+                Use for Images
+              </>
             )}
-          </div>
+          </button>
+        )}
+
+        {/* Chevron */}
+        <div style={{ flexShrink: 0 }}>
+          {isExpanded ? (
+            <ChevronUp size={16} style={{ color: 'rgba(255, 255, 255, 0.4)' }} />
+          ) : (
+            <ChevronDown size={16} style={{ color: 'rgba(255, 255, 255, 0.4)' }} />
+          )}
         </div>
       </div>
 
       {/* Expanded content */}
       {isExpanded && (
-        <div style={{ padding: '0 16px 16px' }}>
-          {/* Preview */}
+        <div style={{ paddingBottom: '16px', paddingLeft: '28px' }}>
+          {/* Preview text */}
           <div
             style={{
               padding: '12px',
@@ -584,51 +572,88 @@ function CopyCard({
               marginBottom: '12px',
             }}
           >
-            <button
-              onClick={onAnalyzeSections}
-              disabled={isAnalyzing}
-              style={{
-                padding: '8px 16px',
-                fontSize: '12px',
-                fontWeight: 500,
-                color: '#FFE66D',
-                backgroundColor: 'rgba(255, 230, 109, 0.1)',
-                border: '1px solid rgba(255, 230, 109, 0.2)',
-                borderRadius: '6px',
-                cursor: isAnalyzing ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                opacity: isAnalyzing ? 0.6 : 1,
-              }}
-            >
-              {isAnalyzing ? (
-                <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-              ) : sectionCount > 0 ? (
-                <RefreshCw size={14} />
-              ) : (
-                <Sparkles size={14} />
-              )}
-              {isAnalyzing ? 'Analyzing...' : sectionCount > 0 ? 'Re-analyze' : 'Analyze Sections'}
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={onAnalyzeSections}
+                disabled={isAnalyzing}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: isAnalyzing ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  opacity: isAnalyzing ? 0.6 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isAnalyzing) e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)';
+                }}
+              >
+                {isAnalyzing ? (
+                  <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                ) : sectionCount > 0 ? (
+                  <RefreshCw size={12} />
+                ) : (
+                  <Sparkles size={12} />
+                )}
+                {isAnalyzing ? 'Analyzing...' : sectionCount > 0 ? 'Re-analyze' : 'Analyze'}
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onExport(copy.id, title);
+                }}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)';
+                }}
+              >
+                <Download size={12} />
+                Export
+              </button>
+            </div>
 
             {sectionCount > 0 && (
               <button
                 onClick={onSelectAllSections}
                 style={{
-                  padding: '6px 12px',
-                  fontSize: '11px',
-                  color: 'rgba(255, 255, 255, 0.7)',
+                  padding: '5px 10px',
+                  fontSize: '10px',
+                  color: 'rgba(255, 255, 255, 0.5)',
                   backgroundColor: 'transparent',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '6px',
+                  border: 'none',
+                  borderRadius: '4px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px',
                 }}
               >
-                <CheckSquare size={12} />
+                <CheckSquare size={11} />
                 Select all ({selectedCount}/{sectionCount})
               </button>
             )}
@@ -636,7 +661,7 @@ function CopyCard({
 
           {/* Sections list */}
           {sectionCount > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {copy.sections.map((section) => (
                 <SectionItem
                   key={section.id}
@@ -645,7 +670,6 @@ function CopyCard({
                   onToggle={() => onToggleSection(section.id)}
                   onGenerateImage={() => onGenerateForSection(section)}
                   getSectionTypeLabel={getSectionTypeLabel}
-                  getSectionTypeColor={getSectionTypeColor}
                   linkedImageUrl={getLinkedImageUrl(section)}
                 />
               ))}
@@ -655,13 +679,13 @@ function CopyCard({
           {sectionCount === 0 && (
             <div
               style={{
-                padding: '24px',
+                padding: '20px',
                 textAlign: 'center',
-                color: 'rgba(255, 255, 255, 0.5)',
-                fontSize: '13px',
+                color: 'rgba(255, 255, 255, 0.4)',
+                fontSize: '12px',
               }}
             >
-              No sections yet. Click Analyze Sections to extract sections with visual concepts.
+              No sections yet. Click Analyze to extract sections.
             </div>
           )}
         </div>
@@ -710,7 +734,7 @@ function BatchActionsBar({
         left: '50%',
         transform: 'translateX(-50%)',
         backgroundColor: 'rgb(30, 32, 34)',
-        border: '1px solid rgba(255, 255, 255, 0.15)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
         borderRadius: '12px',
         padding: '12px 20px',
         display: 'flex',
@@ -721,7 +745,7 @@ function BatchActionsBar({
       }}
     >
       <span style={{ fontSize: '13px', fontWeight: 500, color: 'white' }}>
-        {selectedCount} section{selectedCount > 1 ? 's' : ''} selected
+        {selectedCount} selected
       </span>
 
       <select
@@ -731,7 +755,7 @@ function BatchActionsBar({
           padding: '8px 12px',
           fontSize: '12px',
           backgroundColor: 'rgba(255, 255, 255, 0.05)',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
           borderRadius: '6px',
           color: 'white',
           cursor: 'pointer',
@@ -748,18 +772,24 @@ function BatchActionsBar({
         onClick={() => onGenerateBatch(selectedStyle)}
         disabled={isGenerating}
         style={{
-          padding: '10px 20px',
-          fontSize: '13px',
+          padding: '8px 16px',
+          fontSize: '12px',
           fontWeight: 600,
           color: '#1a1a1a',
-          background: 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
           border: 'none',
-          borderRadius: '8px',
+          borderRadius: '6px',
           cursor: isGenerating ? 'not-allowed' : 'pointer',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
+          gap: '6px',
           opacity: isGenerating ? 0.7 : 1,
+        }}
+        onMouseEnter={(e) => {
+          if (!isGenerating) e.currentTarget.style.backgroundColor = 'white';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
         }}
       >
         {isGenerating ? (
@@ -767,22 +797,21 @@ function BatchActionsBar({
         ) : (
           <Wand2 size={14} />
         )}
-        Generate Images
+        Generate
       </button>
 
       <button
         onClick={onClearSelection}
         style={{
-          padding: '8px',
-          fontSize: '12px',
-          color: 'rgba(255, 255, 255, 0.6)',
+          padding: '6px',
+          color: 'rgba(255, 255, 255, 0.5)',
           backgroundColor: 'transparent',
           border: 'none',
-          borderRadius: '6px',
+          borderRadius: '4px',
           cursor: 'pointer',
         }}
       >
-        Clear
+        <X size={16} />
       </button>
     </div>
   );
@@ -794,9 +823,12 @@ function BatchActionsBar({
 
 interface CopyLibraryPanelProps {
   brandId: string | null;
+  mediaMode?: boolean;
+  onSelectForMedia?: (copy: { id: string; title: string; content: string; platform: string }) => void;
+  selectedCopyId?: string;
 }
 
-export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
+export function CopyLibraryPanel({ brandId, mediaMode = false, onSelectForMedia, selectedCopyId }: CopyLibraryPanelProps) {
   const {
     copies,
     isLoading,
@@ -815,7 +847,6 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
     isAnalyzing,
     analyzeCopy,
     getSectionTypeLabel,
-    getSectionTypeColor,
   } = useSectionAnalyzer();
 
   const [expandedCopyIds, setExpandedCopyIds] = useState<Set<string>>(new Set());
@@ -842,7 +873,6 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
 
   // Filter copies based on search and filters
   const filteredCopies = copies.filter(copy => {
-    // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       const matchesText = copy.copy_text.toLowerCase().includes(query);
@@ -850,9 +880,7 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
       const matchesType = copy.content_type.toLowerCase().includes(query);
       if (!matchesText && !matchesPlatform && !matchesType) return false;
     }
-    // Platform filter
     if (filterPlatform !== 'all' && copy.platform !== filterPlatform) return false;
-    // Content type filter
     if (filterContentType !== 'all' && copy.content_type !== filterContentType) return false;
     return true;
   });
@@ -864,14 +892,13 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
     }
   }, [brandId, fetchCopiesWithMedia]);
 
-  // Register refresh callback with CopywritingContext for SaveToCopyLibrary
+  // Register refresh callback with CopywritingContext
   const { setOnCopyLibraryRefresh } = useCopywritingContext();
   useEffect(() => {
     setOnCopyLibraryRefresh(() => fetchCopiesWithMedia);
     return () => setOnCopyLibraryRefresh(null);
   }, [fetchCopiesWithMedia, setOnCopyLibraryRefresh]);
 
-  // Toggle copy expansion
   const toggleCopyExpanded = (copyId: string) => {
     setExpandedCopyIds(prev => {
       const next = new Set(prev);
@@ -884,17 +911,13 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
     });
   };
 
-  // Handle section analysis
   const handleAnalyzeSections = async (copyId: string) => {
     await analyzeCopy(copyId);
-    // Refresh the copy data after analysis
     await refreshCopy(copyId);
     await fetchCopiesWithMedia();
   };
 
-  // Handle batch generation - opens slide-over for first selected section
   const handleGenerateBatch = (_style: AdvancedStylePreset) => {
-    // Find the first selected section and open the slide-over
     for (const copy of copies) {
       for (const section of copy.sections) {
         if (selectedSectionIds.has(section.id)) {
@@ -905,13 +928,11 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
     }
   };
 
-  // Handle single section generation - opens the slide-over
   const handleGenerateForSection = (section: CopySection) => {
     setSelectedSection(section);
     setIsSlideOverOpen(true);
   };
 
-  // Handle export - opens the export modal
   const handleExport = (copyId: string, title: string) => {
     setExportCopyId(copyId);
     setExportCopyTitle(title);
@@ -920,13 +941,7 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
 
   if (!brandId) {
     return (
-      <div
-        style={{
-          padding: '32px',
-          textAlign: 'center',
-          color: 'rgba(255, 255, 255, 0.5)',
-        }}
-      >
+      <div style={{ padding: '32px', textAlign: 'center', color: 'rgba(255, 255, 255, 0.4)' }}>
         Select a brand to view copy library
       </div>
     );
@@ -934,50 +949,43 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
 
   if (isLoading) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '32px',
-          color: 'rgba(255, 255, 255, 0.5)',
-        }}
-      >
-        <Loader2 size={20} style={{ animation: 'spin 1s linear infinite', marginRight: '8px' }} />
-        Loading copy library...
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '32px',
+        color: 'rgba(255, 255, 255, 0.4)',
+      }}>
+        <Loader2 size={18} style={{ animation: 'spin 1s linear infinite', marginRight: '8px' }} />
+        Loading...
       </div>
     );
   }
 
   if (error) {
     return (
-      <div
-        style={{
-          padding: '16px',
-          backgroundColor: 'rgba(239, 68, 68, 0.1)',
-          border: '1px solid rgba(239, 68, 68, 0.2)',
-          borderRadius: '8px',
-          color: '#EF4444',
-          fontSize: '13px',
-        }}
-      >
+      <div style={{
+        padding: '16px',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderRadius: '8px',
+        color: '#EF4444',
+        fontSize: '13px',
+      }}>
         Error: {error}
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}
-      <div style={{ flexShrink: 0 }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '12px',
-          }}
-        >
+      <div style={{ flexShrink: 0, marginBottom: '16px' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '12px',
+        }}>
           <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'white', margin: 0 }}>
             Copy Library
           </h3>
@@ -986,9 +994,9 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
               onClick={() => setShowFilters(!showFilters)}
               style={{
                 padding: '6px',
-                color: showFilters ? '#3B82F6' : 'rgba(255, 255, 255, 0.5)',
-                backgroundColor: showFilters ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                border: showFilters ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid rgba(255, 255, 255, 0.1)',
+                color: showFilters ? 'white' : 'rgba(255, 255, 255, 0.4)',
+                backgroundColor: showFilters ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                border: 'none',
                 borderRadius: '6px',
                 cursor: 'pointer',
               }}
@@ -1000,9 +1008,9 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
               onClick={() => fetchCopiesWithMedia()}
               style={{
                 padding: '6px',
-                color: 'rgba(255, 255, 255, 0.5)',
+                color: 'rgba(255, 255, 255, 0.4)',
                 backgroundColor: 'transparent',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
+                border: 'none',
                 borderRadius: '6px',
                 cursor: 'pointer',
               }}
@@ -1013,8 +1021,8 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
           </div>
         </div>
 
-        {/* Search Input */}
-        <div style={{ position: 'relative', marginBottom: '10px' }}>
+        {/* Search */}
+        <div style={{ position: 'relative', marginBottom: showFilters ? '10px' : '0' }}>
           <Search
             size={14}
             style={{
@@ -1022,7 +1030,7 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
               left: '10px',
               top: '50%',
               transform: 'translateY(-50%)',
-              color: 'rgba(255, 255, 255, 0.4)',
+              color: 'rgba(255, 255, 255, 0.3)',
             }}
           />
           <input
@@ -1032,11 +1040,11 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
               width: '100%',
-              padding: '8px 32px 8px 32px',
+              padding: '8px 32px',
               fontSize: '12px',
               color: 'white',
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
               borderRadius: '8px',
               outline: 'none',
             }}
@@ -1063,14 +1071,7 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
 
         {/* Filters */}
         {showFilters && (
-          <div
-            style={{
-              display: 'flex',
-              gap: '8px',
-              marginBottom: '10px',
-              flexWrap: 'wrap',
-            }}
-          >
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <select
               value={filterPlatform}
               onChange={(e) => setFilterPlatform(e.target.value)}
@@ -1080,8 +1081,8 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
                 padding: '6px 8px',
                 fontSize: '11px',
                 color: 'white',
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
+                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
                 borderRadius: '6px',
                 outline: 'none',
               }}
@@ -1100,8 +1101,8 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
                 padding: '6px 8px',
                 fontSize: '11px',
                 color: 'white',
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
+                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
                 borderRadius: '6px',
                 outline: 'none',
               }}
@@ -1114,59 +1115,53 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
           </div>
         )}
 
-        {/* Results count */}
+        {/* Results count when filtered */}
         {(searchQuery || filterPlatform !== 'all' || filterContentType !== 'all') && (
-          <div
-            style={{
-              fontSize: '11px',
-              color: 'rgba(255, 255, 255, 0.5)',
-              marginBottom: '8px',
-            }}
-          >
+          <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.4)', marginTop: '8px' }}>
             {filteredCopies.length} of {copies.length} items
           </div>
         )}
       </div>
 
-      {/* Copies list */}
-      {copies.length === 0 ? (
-        <div
-          style={{
+      {/* List */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {copies.length === 0 ? (
+          <div style={{
             padding: '32px',
             textAlign: 'center',
-            color: 'rgba(255, 255, 255, 0.5)',
-            backgroundColor: 'rgba(255, 255, 255, 0.02)',
-            borderRadius: '12px',
-          }}
-        >
-          <FileText size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
-          <p style={{ margin: 0 }}>No copy content yet.</p>
-          <p style={{ margin: '4px 0 0', fontSize: '12px' }}>
-            Generate copy to see it here
-          </p>
-        </div>
-      ) : (
-        filteredCopies.map((copy) => (
-          <CopyCard
-            key={copy.id}
-            copy={copy}
-            isExpanded={expandedCopyIds.has(copy.id)}
-            onToggleExpand={() => toggleCopyExpanded(copy.id)}
-            onAnalyzeSections={() => handleAnalyzeSections(copy.id)}
-            isAnalyzing={isAnalyzing}
-            selectedSectionIds={selectedSectionIds}
-            onToggleSection={toggleSection}
-            onSelectAllSections={() => selectAllSections(copy.id)}
-            onGenerateForSection={handleGenerateForSection}
-            onCopyFormat={copyToClipboard}
-            onExport={handleExport}
-            getSectionTypeLabel={getSectionTypeLabel}
-            getSectionTypeColor={getSectionTypeColor}
-          />
-        ))
-      )}
+            color: 'rgba(255, 255, 255, 0.4)',
+          }}>
+            <FileText size={28} style={{ marginBottom: '12px', opacity: 0.5 }} />
+            <p style={{ margin: 0, fontSize: '13px' }}>No copy content yet.</p>
+            <p style={{ margin: '4px 0 0', fontSize: '12px', opacity: 0.7 }}>
+              Generate copy to see it here
+            </p>
+          </div>
+        ) : (
+          filteredCopies.map((copy) => (
+            <CopyCard
+              key={copy.id}
+              copy={copy}
+              isExpanded={expandedCopyIds.has(copy.id)}
+              onToggleExpand={() => toggleCopyExpanded(copy.id)}
+              onAnalyzeSections={() => handleAnalyzeSections(copy.id)}
+              isAnalyzing={isAnalyzing}
+              selectedSectionIds={selectedSectionIds}
+              onToggleSection={toggleSection}
+              onSelectAllSections={() => selectAllSections(copy.id)}
+              onGenerateForSection={handleGenerateForSection}
+              onCopyFormat={copyToClipboard}
+              onExport={handleExport}
+              getSectionTypeLabel={getSectionTypeLabel}
+              mediaMode={mediaMode}
+              onSelectForMedia={onSelectForMedia}
+              isSelectedForMedia={selectedCopyId === copy.id}
+            />
+          ))
+        )}
+      </div>
 
-      {/* Batch actions bar */}
+      {/* Batch actions */}
       <BatchActionsBar
         selectedCount={selectedSectionIds.size}
         onGenerateBatch={handleGenerateBatch}
@@ -1174,7 +1169,6 @@ export function CopyLibraryPanel({ brandId }: CopyLibraryPanelProps) {
         isGenerating={isGenerating}
       />
 
-      {/* Keyframes */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }

@@ -122,6 +122,14 @@ export function ChatContainer() {
   const [brandsList, setBrandsList] = useState<{ id: string; name: string }[]>([]);
   const brandAPI = useBrandAPI();
 
+  // Media Mode state - selected article for image generation
+  const [selectedCopyForMedia, setSelectedCopyForMedia] = useState<{
+    id: string;
+    title: string;
+    content: string;
+    platform: string;
+  } | null>(null);
+
   // Pending working directory (selected before session exists)
   const [pendingWorkingDirectory, setPendingWorkingDirectory] = useState<string | null>(null);
 
@@ -200,7 +208,8 @@ export function ChatContainer() {
     copywritingContext.setBrandId(selectedBrandId);
     copywritingContext.setSessionId(currentSessionId);
     copywritingContext.setMode(currentSessionMode);
-  }, [selectedBrandId, currentSessionId, currentSessionMode]);
+    copywritingContext.setSelectedCopyForMedia(selectedCopyForMedia);
+  }, [selectedBrandId, currentSessionId, currentSessionMode, selectedCopyForMedia]);
 
 
   const loadSessions = async () => {
@@ -1299,6 +1308,8 @@ export function ChatContainer() {
               contentFormatIds: copywritingContext.contentFormatIds?.length ? copywritingContext.contentFormatIds : undefined,
               templateId: copywritingContext.templateId || undefined,
               tonePresetId: copywritingContext.tonePresetId || undefined,
+              // Media mode: include selected article for image generation
+              ...(effectiveMode === 'media' && selectedCopyForMedia ? { selectedCopyForMedia } : {}),
             }
           : undefined
       );
@@ -1501,27 +1512,133 @@ export function ChatContainer() {
       </nav>
 
         {currentSessionMode === 'media' ? (
-          // Media Mode - Copy Library with Image Generation
-          <div className="flex flex-1 flex-col overflow-hidden bg-[#0a0a0a]">
-            {/* Brand Selector Header */}
-            <div className="border-b border-white/10 bg-[rgb(30,32,34)] px-6 py-3">
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-medium text-white/70">Brand:</span>
-                <select
-                  value={selectedBrandId || ''}
-                  onChange={(e) => setSelectedBrandId(e.target.value || null)}
-                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white"
-                >
-                  <option value="">Select a brand...</option>
-                  {brandsList.map((brand) => (
-                    <option key={brand.id} value={brand.id}>{brand.name}</option>
-                  ))}
-                </select>
+          // Media Mode - Chat interface with Copy Library side panel
+          <div className="flex flex-1 overflow-hidden">
+            {/* Main Chat Area */}
+            <div className="flex flex-col flex-1 min-w-0">
+              {/* Brand and Selected Article Header */}
+              <div className="border-b border-white/10 bg-[rgb(30,32,34)] px-6 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm font-medium text-white/70">Brand:</span>
+                    <select
+                      value={selectedBrandId || ''}
+                      onChange={(e) => setSelectedBrandId(e.target.value || null)}
+                      className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white"
+                    >
+                      <option value="">Select a brand...</option>
+                      {brandsList.map((brand) => (
+                        <option key={brand.id} value={brand.id}>{brand.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {selectedCopyForMedia && (
+                    <div className="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                      <span className="text-xs font-medium text-blue-300">Selected:</span>
+                      <span className="text-sm text-white max-w-[300px] truncate">
+                        {selectedCopyForMedia.title}
+                      </span>
+                      <button
+                        onClick={() => setSelectedCopyForMedia(null)}
+                        className="text-blue-300 hover:text-white transition-colors p-0.5"
+                        title="Clear selection"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {messages.length === 0 ? (
+                // Welcome screen for media mode
+                <NewChatWelcome
+                  key={currentSessionId || 'welcome-media'}
+                  inputValue={inputValue}
+                  onInputChange={setInputValue}
+                  onSubmit={handleSubmit}
+                  onStop={handleStop}
+                  disabled={!isConnected}
+                  isGenerating={isLoading}
+                  isPlanMode={isPlanMode}
+                  onTogglePlanMode={handleTogglePlanMode}
+                  availableCommands={availableCommands}
+                  onOpenBuildWizard={handleOpenBuildWizard}
+                  mode={currentSessionMode}
+                  onModeChange={setCurrentSessionMode}
+                  sessionId={currentSessionId || undefined}
+                  pendingMessagesCount={pendingMessages.length}
+                  selectedBrandId={selectedBrandId}
+                />
+              ) : (
+                <>
+                  {/* Messages */}
+                  <MessageList
+                    messages={messages}
+                    isLoading={isCurrentSessionLoading}
+                    liveTokenCount={liveTokenCount}
+                    scrollContainerRef={scrollContainerRef}
+                  />
+
+                  {/* Input */}
+                  <ChatInput
+                    key={currentSessionId || 'new-chat-media'}
+                    value={inputValue}
+                    onChange={setInputValue}
+                    onSubmit={handleSubmit}
+                    onStop={handleStop}
+                    disabled={!isConnected}
+                    isGenerating={isLoading}
+                    isPlanMode={isPlanMode}
+                    onTogglePlanMode={handleTogglePlanMode}
+                    backgroundProcesses={backgroundProcesses.get(currentSessionId || '') || []}
+                    onKillProcess={handleKillProcess}
+                    mode={currentSessionId ? currentSessionMode : undefined}
+                    availableCommands={availableCommands}
+                    contextUsage={currentSessionId ? contextUsage.get(currentSessionId) : undefined}
+                    selectedModel={selectedModel}
+                    pendingMessagesCount={pendingMessages.length}
+                  />
+                </>
+              )}
             </div>
-            {/* Copy Library */}
-            <div className="flex-1 overflow-y-auto p-6">
-              <CopyLibraryPanel brandId={selectedBrandId} />
+
+            {/* Copy Library Panel - Right sidebar for media mode */}
+            <div
+              className="flex flex-col border-l border-white/10 bg-[rgb(30,32,34)] transition-all duration-200"
+              style={{ width: isCopyPanelOpen ? '380px' : '48px', flexShrink: 0 }}
+            >
+              {/* Panel Toggle */}
+              <button
+                onClick={() => setIsCopyPanelOpen(!isCopyPanelOpen)}
+                className="flex items-center justify-center p-3 border-b border-white/10 hover:bg-white/5 transition-colors"
+                title={isCopyPanelOpen ? 'Collapse panel' : 'Expand Copy Library'}
+              >
+                {isCopyPanelOpen ? (
+                  <PanelRightClose size={18} className="text-white/60" />
+                ) : (
+                  <PanelRightOpen size={18} className="text-white/60" />
+                )}
+              </button>
+              {/* Panel Content */}
+              {isCopyPanelOpen && (
+                <div
+                  className="flex-1 overflow-y-auto p-4"
+                  style={{
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: 'rgba(255,255,255,0.2) transparent',
+                  }}
+                >
+                  <CopyLibraryPanel
+                    brandId={selectedBrandId}
+                    mediaMode={true}
+                    onSelectForMedia={(copy) => setSelectedCopyForMedia(copy)}
+                    selectedCopyId={selectedCopyForMedia?.id}
+                  />
+                </div>
+              )}
             </div>
           </div>
         ) : messages.length === 0 ? (

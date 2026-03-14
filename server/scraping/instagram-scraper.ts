@@ -2,11 +2,15 @@
  * Instagram Scraper - Scrape Instagram profiles and posts
  *
  * Uses RapidAPI Instagram Scraper API for reliable data access.
+ * API: https://rapidapi.com/social-api1-instagram/api/instagram-scraper-api2
  * Wrapped with rate limiting and circuit breaker for resilience.
  */
 
 import { instagramLimiter } from './rate-limiter';
 import { createCircuitBreaker, defaultScraperBreakerOptions } from './circuit-breaker';
+
+// RapidAPI host for Instagram Scraper API2
+const INSTAGRAM_API_HOST = 'instagram-scraper-api2.p.rapidapi.com';
 
 export interface InstagramProfile {
   username: string;
@@ -53,6 +57,7 @@ export function extractInstagramUsername(input: string): string {
 
 /**
  * Internal function to scrape Instagram profile
+ * Uses Instagram Scraper API2: /v1/info endpoint
  */
 async function _scrapeInstagramProfile(username: string): Promise<InstagramProfile> {
   const apiKey = process.env.RAPIDAPI_KEY;
@@ -62,11 +67,11 @@ async function _scrapeInstagramProfile(username: string): Promise<InstagramProfi
   }
 
   const response = await fetch(
-    `https://instagram-scraper-stable-api.p.rapidapi.com/user_info.php?username=${encodeURIComponent(username)}`,
+    `https://${INSTAGRAM_API_HOST}/v1/info?username_or_id_or_url=${encodeURIComponent(username)}`,
     {
       headers: {
         'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': 'instagram-scraper-stable-api.p.rapidapi.com',
+        'X-RapidAPI-Host': INSTAGRAM_API_HOST,
       },
     }
   );
@@ -76,10 +81,11 @@ async function _scrapeInstagramProfile(username: string): Promise<InstagramProfi
     throw new Error(`Instagram API error: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json();
+  const result = await response.json();
+  const data = result.data;
 
-  if (!data || data.error) {
-    throw new Error(`Instagram API returned error: ${data?.error || 'Unknown error'}`);
+  if (!data) {
+    throw new Error(`Instagram API returned error: ${result?.message || 'No data returned'}`);
   }
 
   return {
@@ -89,7 +95,7 @@ async function _scrapeInstagramProfile(username: string): Promise<InstagramProfi
     followers: data.follower_count || 0,
     following: data.following_count || 0,
     postsCount: data.media_count || 0,
-    profilePicUrl: data.profile_pic_url || '',
+    profilePicUrl: data.profile_pic_url || data.profile_pic_url_hd || '',
     isVerified: data.is_verified || false,
     externalUrl: data.external_url,
   };
@@ -97,6 +103,7 @@ async function _scrapeInstagramProfile(username: string): Promise<InstagramProfi
 
 /**
  * Internal function to scrape Instagram posts
+ * Uses Instagram Scraper API2: /v1.2/posts endpoint
  */
 async function _scrapeInstagramPosts(username: string, limit = 30): Promise<InstagramPost[]> {
   const apiKey = process.env.RAPIDAPI_KEY;
@@ -106,11 +113,11 @@ async function _scrapeInstagramPosts(username: string, limit = 30): Promise<Inst
   }
 
   const response = await fetch(
-    `https://instagram-scraper-stable-api.p.rapidapi.com/user_posts.php?username=${encodeURIComponent(username)}&count=${limit}`,
+    `https://${INSTAGRAM_API_HOST}/v1.2/posts?username_or_id_or_url=${encodeURIComponent(username)}`,
     {
       headers: {
         'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': 'instagram-scraper-stable-api.p.rapidapi.com',
+        'X-RapidAPI-Host': INSTAGRAM_API_HOST,
       },
     }
   );
@@ -120,23 +127,31 @@ async function _scrapeInstagramPosts(username: string, limit = 30): Promise<Inst
     throw new Error(`Instagram API error: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json();
+  const result = await response.json();
+  const items = result.data?.items;
 
-  if (!data?.data?.items) {
+  if (!items || !Array.isArray(items)) {
     return [];
   }
 
-  return data.data.items.slice(0, limit).map((post: Record<string, unknown>) => ({
-    id: post.id as string,
-    shortcode: post.code as string,
-    caption: (post.caption as Record<string, unknown>)?.text || '',
-    likes: post.like_count as number || 0,
-    comments: post.comment_count as number || 0,
-    timestamp: new Date((post.taken_at as number) * 1000).toISOString(),
-    mediaType: post.media_type === 1 ? 'image' : post.media_type === 2 ? 'video' : 'carousel',
-    url: `https://instagram.com/p/${post.code}`,
-    thumbnailUrl: post.thumbnail_url as string,
-  }));
+  return items.slice(0, limit).map((post: Record<string, unknown>) => {
+    const caption = post.caption as Record<string, unknown> | null;
+    const code = post.code as string || post.shortcode as string || '';
+
+    return {
+      id: (post.id as string) || '',
+      shortcode: code,
+      caption: caption?.text as string || '',
+      likes: (post.like_count as number) || (post.likes as Record<string, unknown>)?.count as number || 0,
+      comments: (post.comment_count as number) || (post.comments as Record<string, unknown>)?.count as number || 0,
+      timestamp: post.taken_at
+        ? new Date((post.taken_at as number) * 1000).toISOString()
+        : new Date().toISOString(),
+      mediaType: post.media_type === 1 ? 'image' : post.media_type === 2 ? 'video' : 'carousel',
+      url: `https://instagram.com/p/${code}`,
+      thumbnailUrl: (post.thumbnail_url as string) || ((post.image_versions2 as Record<string, unknown>)?.candidates as Array<Record<string, unknown>>)?.[0]?.url as string,
+    };
+  });
 }
 
 // Create circuit breakers for profile and posts scrapers

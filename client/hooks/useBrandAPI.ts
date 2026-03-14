@@ -153,6 +153,11 @@ export interface ReferenceMaterial {
   content: string;
   source_url?: string;
   tags: string[];
+  // File reference fields
+  file_path?: string;
+  is_folder?: number;
+  folder_depth?: number;
+  file_patterns?: string;
   created_at: string;
 }
 
@@ -513,6 +518,11 @@ export function useBrandAPI() {
         content: string;
         sourceUrl?: string;
         tags?: string[];
+        // File reference fields
+        filePath?: string;
+        isFolder?: boolean;
+        folderDepth?: number;
+        filePatterns?: string[];
       }
     ): Promise<ReferenceMaterial | null> => {
       setIsLoading(true);

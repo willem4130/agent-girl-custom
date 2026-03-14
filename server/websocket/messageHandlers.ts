@@ -298,13 +298,27 @@ async function handleChatMessage(
     // Build query options with provider-specific system prompt (including agent list)
     // Add working directory context to system prompt AND all agent prompts
     // Pass copywriting context (brand/content types) for copywriting/media modes
+    // Include sessionId for session-specific reference materials
+    const copywritingContextWithSession = copywritingContext
+      ? { ...(copywritingContext as Record<string, unknown>), sessionId: sessionId as string }
+      : undefined;
     const baseSystemPrompt = await getSystemPrompt(
       providerType,
       AGENT_REGISTRY,
       userConfig,
       timezone as string | undefined,
       session.mode,
-      copywritingContext as { brandId?: string; sessionId?: string; contentTypes?: Array<{ id: string; label: string; icon?: string }>; templateId?: string; tonePresetId?: string; includeReferences?: boolean; referenceTags?: string[]; contentFormatIds?: string[] } | undefined
+      copywritingContextWithSession as {
+        brandId?: string;
+        sessionId?: string;
+        contentTypes?: Array<{ id: string; label: string; icon?: string }>;
+        templateId?: string;
+        tonePresetId?: string;
+        includeReferences?: boolean;
+        referenceTags?: string[];
+        contentFormatIds?: string[];
+        selectedCopyForMedia?: { id: string; title: string; content: string; platform: string };
+      } | undefined
     );
     const systemPromptWithContext = `${baseSystemPrompt}
 

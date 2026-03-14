@@ -878,15 +878,244 @@ export async function handleMediaRoutes(
   }
 
   // ============================================================================
+  // LOGO OVERLAY ENDPOINTS
+  // ============================================================================
+
+  // POST /api/media/brands/:brandId/upload-logo - Upload brand logo
+  const logoUploadMatch = pathname.match(/^\/api\/media\/brands\/([^/]+)\/upload-logo$/);
+  if (logoUploadMatch && req.method === 'POST') {
+    try {
+      const brandId = logoUploadMatch[1];
+      const formData = await req.formData();
+      const logoFile = formData.get('logo') as File | null;
+
+      if (!logoFile) {
+        return jsonResponse({ error: 'No logo file provided' }, 400);
+      }
+
+      // Validate file type
+      const validTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+      if (!validTypes.includes(logoFile.type)) {
+        return jsonResponse({ error: 'Invalid file type. Use PNG, JPG, WebP, or SVG.' }, 400);
+      }
+
+      // Create logos directory if it doesn't exist
+      const logosDir = path.join(getMediaStoragePath(), 'logos');
+      if (!fs.existsSync(logosDir)) {
+        fs.mkdirSync(logosDir, { recursive: true });
+      }
+
+      // Save logo file
+      const ext = logoFile.name.split('.').pop() || 'png';
+      const logoFilename = `${brandId}_logo.${ext}`;
+      const logoPath = path.join(logosDir, logoFilename);
+
+      const buffer = await logoFile.arrayBuffer();
+      fs.writeFileSync(logoPath, Buffer.from(buffer));
+
+      // Update brand visual style with logo path
+      copywritingDb.createOrUpdateVisualStyle(brandId, {
+        logoUrl: `/api/media/files/logos/${logoFilename}`,
+      });
+
+      return jsonResponse({
+        success: true,
+        logoPath: logoPath,
+        logoUrl: `/api/media/files/logos/${logoFilename}`,
+      });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // GET /api/media/brands/:brandId/logo - Get brand logo URL
+  const getLogoMatch = pathname.match(/^\/api\/media\/brands\/([^/]+)\/logo$/);
+  if (getLogoMatch && req.method === 'GET') {
+    try {
+      const brandId = getLogoMatch[1];
+      const visualStyle = copywritingDb.getVisualStyle(brandId);
+
+      if (!visualStyle?.logo_url) {
+        return jsonResponse({ error: 'No logo found for this brand' }, 404);
+      }
+
+      return jsonResponse({
+        logoUrl: visualStyle.logo_url,
+      });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/media/images/:imageId/apply-logo - Apply logo to a single image
+  const applyLogoMatch = pathname.match(/^\/api\/media\/images\/([^/]+)\/apply-logo$/);
+  if (applyLogoMatch && req.method === 'POST') {
+    try {
+      const imageId = applyLogoMatch[1];
+      const body = (await req.json()) as {
+        logoPosition?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
+        sizePercent?: number;
+        opacity?: number;
+        margin?: number;
+        preset?: string;
+      };
+
+      // Get image record
+      const image = copywritingDb.getGeneratedImage(imageId);
+      if (!image) {
+        return jsonResponse({ error: 'Image not found' }, 404);
+      }
+
+      if (!image.local_path) {
+        return jsonResponse({ error: 'Image file not available locally' }, 400);
+      }
+
+      // Get brand logo
+      const visualStyle = copywritingDb.getVisualStyle(image.brand_id);
+      if (!visualStyle?.logo_url) {
+        return jsonResponse({ error: 'No logo configured for this brand' }, 400);
+      }
+
+      // Get logo path from URL
+      const logoFilename = visualStyle.logo_url.split('/').pop();
+      const logoPath = path.join(getMediaStoragePath(), 'logos', logoFilename || '');
+
+      if (!fs.existsSync(logoPath)) {
+        return jsonResponse({ error: 'Logo file not found' }, 404);
+      }
+
+      // Dynamic import of logo overlay module
+      const { applyLogoToImage, LOGO_POSITION_PRESETS, isSharpAvailable } = await import('../media-generation/image-editor/logo-overlay');
+
+      if (!isSharpAvailable()) {
+        return jsonResponse({ error: 'Sharp is not installed. Run: bun add sharp' }, 500);
+      }
+
+      // Build config
+      const config = body.preset && LOGO_POSITION_PRESETS[body.preset]
+        ? { ...LOGO_POSITION_PRESETS[body.preset] }
+        : {
+            position: body.logoPosition || 'bottom-right',
+            sizePercent: body.sizePercent || 12,
+            opacity: body.opacity || 0.9,
+            margin: body.margin || 20,
+          };
+
+      // Apply logo
+      const result = await applyLogoToImage(image.local_path, logoPath, config);
+
+      if (!result.success) {
+        return jsonResponse({ error: result.error }, 500);
+      }
+
+      return jsonResponse({
+        success: true,
+        outputPath: result.outputPath,
+        outputUrl: `/api/media/files/images/${path.basename(result.outputPath || '')}`,
+      });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // POST /api/media/images/batch-apply-logo - Apply logo to multiple images
+  if (pathname === '/api/media/images/batch-apply-logo' && req.method === 'POST') {
+    try {
+      const body = (await req.json()) as {
+        imageIds: string[];
+        brandId: string;
+        logoPosition?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
+        sizePercent?: number;
+        opacity?: number;
+        margin?: number;
+        preset?: string;
+      };
+
+      if (!body.imageIds || body.imageIds.length === 0) {
+        return jsonResponse({ error: 'imageIds array is required' }, 400);
+      }
+
+      if (!body.brandId) {
+        return jsonResponse({ error: 'brandId is required' }, 400);
+      }
+
+      // Get brand logo
+      const visualStyle = copywritingDb.getVisualStyle(body.brandId);
+      if (!visualStyle?.logo_url) {
+        return jsonResponse({ error: 'No logo configured for this brand' }, 400);
+      }
+
+      const logoFilename = visualStyle.logo_url.split('/').pop();
+      const logoPath = path.join(getMediaStoragePath(), 'logos', logoFilename || '');
+
+      if (!fs.existsSync(logoPath)) {
+        return jsonResponse({ error: 'Logo file not found' }, 404);
+      }
+
+      // Dynamic import of logo overlay module
+      const { applyLogoToImage, LOGO_POSITION_PRESETS, isSharpAvailable } = await import('../media-generation/image-editor/logo-overlay');
+
+      if (!isSharpAvailable()) {
+        return jsonResponse({ error: 'Sharp is not installed. Run: bun add sharp' }, 500);
+      }
+
+      // Build config
+      const config = body.preset && LOGO_POSITION_PRESETS[body.preset]
+        ? { ...LOGO_POSITION_PRESETS[body.preset] }
+        : {
+            position: body.logoPosition || 'bottom-right',
+            sizePercent: body.sizePercent || 12,
+            opacity: body.opacity || 0.9,
+            margin: body.margin || 20,
+          };
+
+      // Process images
+      const results: Array<{
+        imageId: string;
+        success: boolean;
+        outputUrl?: string;
+        error?: string;
+      }> = [];
+
+      for (const imageId of body.imageIds) {
+        const image = copywritingDb.getGeneratedImage(imageId);
+        if (!image || !image.local_path) {
+          results.push({ imageId, success: false, error: 'Image not found or not available locally' });
+          continue;
+        }
+
+        const result = await applyLogoToImage(image.local_path, logoPath, config);
+        results.push({
+          imageId,
+          success: result.success,
+          outputUrl: result.outputPath ? `/api/media/files/images/${path.basename(result.outputPath)}` : undefined,
+          error: result.error,
+        });
+      }
+
+      return jsonResponse({
+        results,
+        totalProcessed: results.length,
+        totalSuccess: results.filter(r => r.success).length,
+        totalFailed: results.filter(r => !r.success).length,
+      });
+    } catch (error) {
+      return jsonResponse({ error: getErrorMessage(error) }, 500);
+    }
+  }
+
+  // ============================================================================
   // FILE SERVING ENDPOINTS
   // ============================================================================
 
   // GET /api/media/files/:type/:filename - Serve media files
-  const fileMatch = pathname.match(/^\/api\/media\/files\/(images|videos|thumbnails)\/(.+)$/);
+  const fileMatch = pathname.match(/^\/api\/media\/files\/(images|videos|thumbnails|logos)\/(.+)$/);
   if (fileMatch && req.method === 'GET') {
     try {
       const [, type, filename] = fileMatch;
-      const filePath = path.join(getMediaStoragePath(type as 'images' | 'videos' | 'thumbnails'), filename);
+      const filePath = type === 'logos'
+        ? path.join(getMediaStoragePath(), 'logos', filename)
+        : path.join(getMediaStoragePath(type as 'images' | 'videos' | 'thumbnails'), filename);
 
       if (!fs.existsSync(filePath)) {
         return new Response('File not found', { status: 404 });
@@ -900,6 +1129,7 @@ export async function handleMediaRoutes(
         '.png': 'image/png',
         '.webp': 'image/webp',
         '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
         '.mp4': 'video/mp4',
         '.webm': 'video/webm',
         '.mov': 'video/quicktime',

@@ -81,21 +81,45 @@ const DEFAULT_CONFIG: CrawlConfig = {
   respectRobotsTxt: true,
   includeSitemap: true,
   priorityPaths: [
+    // About pages
     '/about',
     '/over-ons',
+    '/over-',
+    '/wie-zijn-wij',
+    '/team',
+    // Services pages
     '/services',
     '/diensten',
+    '/solutions',
+    '/oplossingen',
+    '/wat-we-doen',
+    '/what-we-do',
+    // Industry-specific (logistics, supply chain, WMS)
+    '/wms',
+    '/supply-chain',
+    '/logistiek',
+    '/logistics',
+    '/warehousing',
+    '/magazijn',
+    '/ontwerpen',
+    '/optimaliseren',
+    '/experts',
+    // Products
     '/products',
     '/producten',
+    '/software',
+    '/tools',
+    // Content
     '/blog',
     '/nieuws',
     '/news',
     '/case-studies',
     '/cases',
+    '/referenties',
     '/portfolio',
     '/testimonials',
     '/reviews',
-    '/team',
+    '/klanten',
     '/contact',
   ],
 };
@@ -105,31 +129,70 @@ const USER_AGENT = 'Mozilla/5.0 (compatible; AgentGirl/1.0; +https://github.com/
 // Page type detection patterns
 const PAGE_TYPE_PATTERNS: Record<ScrapedPage['page_type'], RegExp[]> = {
   homepage: [/^\/$/],
-  about: [/\/about/i, /\/over-ons/i, /\/about-us/i, /\/team/i, /\/ons-team/i, /\/wie-zijn-wij/i],
-  blog: [/\/blog/i, /\/nieuws/i, /\/news/i, /\/articles?/i, /\/posts?/i, /\/insights?/i],
-  case_study: [/\/case-stud/i, /\/cases?/i, /\/portfolio/i, /\/werk/i, /\/work/i, /\/projects?/i],
+  about: [/\/about/i, /\/over-ons/i, /\/over-/i, /\/about-us/i, /\/team/i, /\/ons-team/i, /\/wie-zijn-wij/i, /\/wie-we-zijn/i],
+  blog: [/\/blog/i, /\/nieuws/i, /\/news/i, /\/articles?/i, /\/posts?/i, /\/insights?/i, /\/actueel/i],
+  case_study: [/\/case-stud/i, /\/cases?/i, /\/portfolio/i, /\/werk/i, /\/work/i, /\/projects?/i, /\/referenties/i],
   testimonial: [/\/testimonials?/i, /\/reviews?/i, /\/klanten/i, /\/customers?/i, /\/success-stories/i],
-  product: [/\/products?/i, /\/producten/i, /\/shop/i, /\/winkel/i, /\/store/i],
-  services: [/\/services?/i, /\/diensten/i, /\/solutions?/i, /\/oplossingen/i, /\/what-we-do/i],
+  product: [/\/products?/i, /\/producten/i, /\/shop/i, /\/winkel/i, /\/store/i, /\/tools?/i, /\/software/i],
+  services: [/\/services?/i, /\/diensten/i, /\/solutions?/i, /\/oplossingen/i, /\/what-we-do/i, /\/wat-we-doen/i, /\/ontwerp/i, /\/optimalis/i, /\/experts?/i, /\/wms/i, /\/supply-chain/i, /\/logistiek/i, /\/warehousing/i],
   other: [],
 };
 
 // Topic detection keywords
 const TOPIC_KEYWORDS: Record<string, string[]> = {
+  logistics: ['logistiek', 'logistics', 'warehousing', 'magazijn', 'distributie', 'distribution', 'fulfillment', 'supply chain', 'dc', 'distribution center', 'distributiecentrum'],
+  wms: ['wms', 'warehouse management', 'magazijnbeheer', 'erp', 'sap', 'inventory', 'voorraad', 'picking', 'slotting', 'throughput'],
+  supplychain: ['supply chain', 'leveranciers', 'suppliers', 'procurement', 'inkoop', 'planning', 'forecast', 'demand', 'vraagvoorspelling'],
+  optimization: ['optimalisatie', 'optimization', 'efficiency', 'efficiëntie', 'verbetering', 'improvement', 'rendement', 'kosten', 'costs'],
   marketing: ['marketing', 'branding', 'advertising', 'campaign', 'social media', 'seo', 'content'],
   technology: ['software', 'development', 'tech', 'digital', 'app', 'platform', 'ai', 'machine learning'],
   design: ['design', 'ux', 'ui', 'creative', 'visual', 'graphic', 'brand identity'],
-  ecommerce: ['ecommerce', 'e-commerce', 'shop', 'store', 'retail', 'products', 'checkout'],
-  consulting: ['consulting', 'strategy', 'advisory', 'business', 'management'],
-  healthcare: ['health', 'medical', 'healthcare', 'wellness', 'clinic', 'hospital'],
-  finance: ['finance', 'banking', 'investment', 'insurance', 'financial'],
-  education: ['education', 'learning', 'training', 'courses', 'academy', 'school'],
-  sustainability: ['sustainable', 'green', 'eco', 'environment', 'climate', 'circular'],
+  ecommerce: ['ecommerce', 'e-commerce', 'shop', 'store', 'retail', 'products', 'checkout', 'webshop'],
+  consulting: ['consulting', 'strategy', 'advisory', 'business', 'management', 'advies', 'strategie'],
+  healthcare: ['health', 'medical', 'healthcare', 'wellness', 'clinic', 'hospital', 'zorg', 'medisch'],
+  finance: ['finance', 'banking', 'investment', 'insurance', 'financial', 'financieel'],
+  education: ['education', 'learning', 'training', 'courses', 'academy', 'school', 'opleiding', 'training'],
+  sustainability: ['sustainable', 'green', 'eco', 'environment', 'climate', 'circular', 'duurzaam', 'circulair'],
 };
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Normalize host - strips 'www.' prefix for consistent domain comparison
+ * This handles cases where sites redirect between www and non-www versions
+ */
+export function normalizeHost(host: string): string {
+  return host.toLowerCase().replace(/^www\./, '');
+}
+
+/**
+ * Resolve canonical URL by following redirects
+ * Returns the final URL after all redirects are followed
+ */
+export async function resolveCanonicalUrl(url: string): Promise<string> {
+  try {
+    // Add protocol if missing
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': USER_AGENT },
+      redirect: 'follow',
+    });
+
+    // Use the final URL after redirects
+    const finalUrl = response.url || url;
+    console.log(`[DeepCrawler] Canonical URL resolved: ${url} -> ${finalUrl}`);
+    return finalUrl;
+  } catch (error) {
+    console.warn(`[DeepCrawler] Failed to resolve canonical URL for ${url}:`, error);
+    return url;
+  }
+}
 
 /**
  * Normalize URL - add protocol, remove trailing slash, handle relative URLs
@@ -169,12 +232,25 @@ export function getBaseUrl(url: string): string {
 
 /**
  * Check if URL is internal (same domain)
+ * Handles www vs non-www variations and subdomains
  */
 function isInternalUrl(url: string, baseUrl: string): boolean {
   try {
-    const urlHost = new URL(url).host;
-    const baseHost = new URL(baseUrl).host;
-    return urlHost === baseHost;
+    const urlHost = normalizeHost(new URL(url).host);
+    const baseHost = normalizeHost(new URL(baseUrl).host);
+
+    // Exact match after normalization (handles www vs non-www)
+    if (urlHost === baseHost) {
+      return true;
+    }
+
+    // Also allow subdomains of the base domain (e.g., blog.example.com for example.com)
+    // but not the other way around
+    if (urlHost.endsWith('.' + baseHost)) {
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }
@@ -479,20 +555,44 @@ async function scrapePage(url: string): Promise<ExtractedContent> {
     .filter(Boolean);
 
   // Extract paragraphs (substantial content only)
-  const paragraphs = $('p, article, .content, main')
-    .find('p')
-    .add($('body > p'))
+  // Start with proper paragraph tags
+  const pTags = $('p')
     .map((_, el) => $(el).text().trim())
     .get()
-    .filter((p) => p.length > 50)
-    .slice(0, 100);
+    .filter((p) => p.length > 30);
+
+  // Also get content from article, main, section elements
+  const mainContent = $('article, main, section, .content, .text, [class*="content"], [class*="text"], [class*="description"]')
+    .find('p, div:not(:has(div)):not(:has(p))')
+    .map((_, el) => $(el).text().trim())
+    .get()
+    .filter((p) => p.length > 30 && p.length < 2000);
+
+  // Get text from divs that have direct text content (not nested elements)
+  const divContent = $('div')
+    .filter((_, el) => {
+      const $el = $(el);
+      // Only divs with direct text, not containing other divs/paragraphs
+      const hasBlockChildren = $el.children('div, p, article, section').length > 0;
+      const text = $el.clone().children().remove().end().text().trim();
+      return !hasBlockChildren && text.length > 40 && text.length < 1000;
+    })
+    .map((_, el) => $(el).clone().children().remove().end().text().trim())
+    .get();
+
+  // Combine and dedupe
+  const allContent = [...new Set([...pTags, ...mainContent, ...divContent])]
+    .filter((text) => text.length > 30)
+    .slice(0, 150);
 
   // Also get list items that might contain important content
   const listContent = $('ul li, ol li')
     .map((_, el) => $(el).text().trim())
     .get()
-    .filter((li) => li.length > 30 && li.length < 500)
-    .slice(0, 20);
+    .filter((li) => li.length > 20 && li.length < 500)
+    .slice(0, 30);
+
+  const paragraphs = [...allContent, ...listContent];
 
   // Extract meta
   const meta = {
@@ -547,7 +647,7 @@ async function scrapePage(url: string): Promise<ExtractedContent> {
 
   return {
     headings: { h1, h2, h3 },
-    paragraphs: [...paragraphs, ...listContent],
+    paragraphs,
     meta,
     structuredData,
     links: {
@@ -570,8 +670,10 @@ async function _deepCrawl(
   // Enforce max pages limit
   mergedConfig.maxPages = Math.min(mergedConfig.maxPages, 100);
 
-  const baseUrl = getBaseUrl(startUrl);
-  const normalizedStart = normalizeUrl(startUrl);
+  // Resolve canonical URL by following redirects (handles www -> non-www, http -> https, etc.)
+  const canonicalUrl = await resolveCanonicalUrl(startUrl);
+  const baseUrl = getBaseUrl(canonicalUrl);
+  const normalizedStart = normalizeUrl(canonicalUrl);
 
   console.log(`[DeepCrawler] Starting crawl of ${baseUrl}, max ${mergedConfig.maxPages} pages`);
 

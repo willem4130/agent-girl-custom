@@ -1,0 +1,20 @@
+{
+  "created": "2026-01-30",
+  "project": "Agent Girl",
+  "framework": "Bun + React 19 SPA",
+  "baseUrl": "http://localhost:3001",
+  "knownIssues": [],
+  "routes": [
+    { "path": "/", "name": "Home (Chat Interface)", "notes": "Single-page app - all views are mode-based, not URL routes" }
+  ],
+  "modes": [
+    { "name": "General", "selector": "button:text('General')" },
+    { "name": "Coder", "selector": "button:text('Coder')" },
+    { "name": "Intense Research", "selector": "button:text('Intense Research')" },
+    { "name": "Spark", "selector": "button:text('Spark')" },
+    { "name": "Copywriting", "selector": "button:text('Copywriting')" },
+    { "name": "Media", "selector": "button:text('Media')" },
+    { "name": "Build", "selector": "button:text('Build')" }
+  ],
+  "notes": "This is a single-page application. Different 'views' are accessed via mode buttons at the bottom of the chat interface, not URL routes."
+}

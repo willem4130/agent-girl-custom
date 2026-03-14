@@ -7,6 +7,14 @@
 
 import React, { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 
+// Selected copy for media mode image generation
+interface SelectedCopyForMedia {
+  id: string;
+  title: string;
+  content: string;
+  platform: string;
+}
+
 interface CopywritingContextValue {
   brandId: string | null;
   sessionId: string | null;
@@ -28,6 +36,10 @@ interface CopywritingContextValue {
   // Content format IDs (multi-select for content series)
   contentFormatIds: string[];
   setContentFormatIds: (ids: string[]) => void;
+  // Media mode: selected article for image generation
+  selectedCopyForMedia: SelectedCopyForMedia | null;
+  setSelectedCopyForMedia: (copy: SelectedCopyForMedia | null) => void;
+  isMediaMode: boolean;
 }
 
 const CopywritingContext = createContext<CopywritingContextValue | null>(null);
@@ -43,8 +55,11 @@ export function CopywritingProvider({ children }: { children: ReactNode }) {
   const [selectedReferenceTags, setSelectedReferenceTags] = useState<string[]>([]);
   // Content format IDs (multi-select for content series)
   const [contentFormatIds, setContentFormatIds] = useState<string[]>([]);
+  // Media mode: selected article for image generation
+  const [selectedCopyForMedia, setSelectedCopyForMedia] = useState<SelectedCopyForMedia | null>(null);
 
   const isCopywritingMode = mode === 'copywriting';
+  const isMediaMode = mode === 'media';
 
   const refreshCopyLibrary = useCallback(() => {
     if (onCopyLibraryRefresh) {
@@ -73,6 +88,9 @@ export function CopywritingProvider({ children }: { children: ReactNode }) {
         setSelectedReferenceTags,
         contentFormatIds,
         setContentFormatIds,
+        selectedCopyForMedia,
+        setSelectedCopyForMedia,
+        isMediaMode,
       }}
     >
       {children}
@@ -103,6 +121,9 @@ export function useCopywritingContext() {
       setSelectedReferenceTags: () => {},
       contentFormatIds: [],
       setContentFormatIds: () => {},
+      selectedCopyForMedia: null,
+      setSelectedCopyForMedia: () => {},
+      isMediaMode: false,
     };
   }
   return context;

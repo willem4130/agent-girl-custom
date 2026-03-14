@@ -1,0 +1,43 @@
+{
+  "brand": {
+    "primaryColor": "#A8C7FA",
+    "secondaryColor": "#DAEEFF",
+    "accentColor": "#f472b6",
+    "background": "dark",
+    "backgroundPrimary": "#141618",
+    "backgroundInput": "#26282A",
+    "backgroundSidebar": "#0C0E10",
+    "textPrimary": "#f3f4f6",
+    "textSecondary": "#9ca3af",
+    "corners": "rounded-lg/rounded-xl",
+    "style": "minimal-modern-dark"
+  },
+  "spacing": {
+    "scale": [4, 6, 8, 12, 16, 20, 24, 32, 48, 64],
+    "sectionGap": 16,
+    "componentGap": 8
+  },
+  "typography": {
+    "headingFont": "Press Start 2P",
+    "bodyFont": "Inter",
+    "monoFont": "JetBrains Mono",
+    "baseSize": 14
+  },
+  "designSystem": {
+    "source": "tailwind.config.js + globals.css",
+    "colors": {
+      "primary": "rgb(var(--primary))",
+      "background": "rgb(var(--bg-primary))",
+      "surface": "rgb(var(--bg-input))",
+      "border": "rgba(255,255,255,0.1)",
+      "success": "#22c55e",
+      "error": "#ef4444"
+    },
+    "animations": {
+      "shimmer": "3s linear infinite",
+      "waterfall": "0.3s ease-out"
+    }
+  },
+  "notes": "Dark mode only app. Uses shimmer gradient effect for active states. Retro pixel font for branding, Inter for UI.",
+  "created": "2026-01-30"
+}

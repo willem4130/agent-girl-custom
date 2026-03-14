@@ -176,9 +176,29 @@ export interface BrandReferenceMaterial {
   brand_id: string;
   material_type: 'url' | 'file' | 'text' | 'project';
   title: string;
-  content: string; // Extracted/stored content
+  content: string; // Extracted/stored content (empty for file refs - read fresh)
   source_url?: string;
   tags: string; // JSON array
+  // File reference fields (for file/project types)
+  file_path?: string; // Original file/folder path (content re-read fresh each time)
+  is_folder?: number; // 0 or 1 - Is this a folder reference?
+  folder_depth?: number; // Max recursion depth for folders (default: 3)
+  file_patterns?: string; // JSON array of glob patterns (e.g., ["*.md", "*.txt"])
+  created_at: string;
+}
+
+export interface SessionReferenceMaterial {
+  id: string;
+  session_id: string;
+  material_type: 'url' | 'file' | 'text' | 'project';
+  title: string;
+  content: string;
+  source_url?: string;
+  tags: string; // JSON array
+  file_path?: string;
+  is_folder?: number;
+  folder_depth?: number;
+  file_patterns?: string;
   created_at: string;
 }
 
@@ -713,6 +733,10 @@ class CopywritingDatabase {
         content TEXT NOT NULL,
         source_url TEXT,
         tags TEXT DEFAULT '[]',
+        file_path TEXT,
+        is_folder INTEGER DEFAULT 0,
+        folder_depth INTEGER DEFAULT 3,
+        file_patterns TEXT DEFAULT '[]',
         created_at TEXT NOT NULL,
         FOREIGN KEY (brand_id) REFERENCES brand_configs(id) ON DELETE CASCADE
       )
@@ -721,6 +745,32 @@ class CopywritingDatabase {
     this.db.run(`
       CREATE INDEX IF NOT EXISTS idx_reference_materials_brand
       ON brand_reference_materials(brand_id)
+    `);
+
+    // Migration: Add file reference columns to brand_reference_materials
+    this.migrateReferenceMaterialsFileColumns();
+
+    // Session reference materials (session-specific, not brand-specific)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS session_reference_materials (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        material_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        source_url TEXT,
+        tags TEXT DEFAULT '[]',
+        file_path TEXT,
+        is_folder INTEGER DEFAULT 0,
+        folder_depth INTEGER DEFAULT 3,
+        file_patterns TEXT DEFAULT '[]',
+        created_at TEXT NOT NULL
+      )
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_session_refs_session_id
+      ON session_reference_materials(session_id)
     `);
 
     // Content generation sessions
@@ -1055,6 +1105,28 @@ class CopywritingDatabase {
     `);
 
     console.log('✅ Copywriting database initialized');
+  }
+
+  /**
+   * Migration: Add file reference columns to brand_reference_materials
+   */
+  private migrateReferenceMaterialsFileColumns() {
+    const columns = ['file_path', 'is_folder', 'folder_depth', 'file_patterns'];
+    const columnDefs: Record<string, string> = {
+      file_path: 'TEXT',
+      is_folder: 'INTEGER DEFAULT 0',
+      folder_depth: 'INTEGER DEFAULT 3',
+      file_patterns: 'TEXT DEFAULT \'[]\'',
+    };
+
+    for (const col of columns) {
+      try {
+        this.db.run(`ALTER TABLE brand_reference_materials ADD COLUMN ${col} ${columnDefs[col]}`);
+        console.log(`✅ Added ${col} column to brand_reference_materials`);
+      } catch {
+        // Column already exists, ignore
+      }
+    }
   }
 
   /**
@@ -1981,6 +2053,11 @@ class CopywritingDatabase {
       content: string;
       sourceUrl?: string;
       tags?: string[];
+      // File reference fields
+      filePath?: string;
+      isFolder?: boolean;
+      folderDepth?: number;
+      filePatterns?: string[];
     }
   ): BrandReferenceMaterial {
     const id = randomUUID();
@@ -1988,8 +2065,8 @@ class CopywritingDatabase {
 
     this.db.run(
       `INSERT INTO brand_reference_materials
-        (id, brand_id, material_type, title, content, source_url, tags, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, brand_id, material_type, title, content, source_url, tags, file_path, is_folder, folder_depth, file_patterns, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         brandId,
@@ -1998,6 +2075,10 @@ class CopywritingDatabase {
         options.content,
         options.sourceUrl || null,
         JSON.stringify(options.tags || []),
+        options.filePath || null,
+        options.isFolder ? 1 : 0,
+        options.folderDepth ?? 3,
+        JSON.stringify(options.filePatterns || []),
         now,
       ]
     );
@@ -2010,6 +2091,10 @@ class CopywritingDatabase {
       content: options.content,
       source_url: options.sourceUrl,
       tags: JSON.stringify(options.tags || []),
+      file_path: options.filePath,
+      is_folder: options.isFolder ? 1 : 0,
+      folder_depth: options.folderDepth ?? 3,
+      file_patterns: JSON.stringify(options.filePatterns || []),
       created_at: now,
     };
   }
@@ -2071,6 +2156,122 @@ class CopywritingDatabase {
   deleteReferenceMaterial(referenceId: string): boolean {
     const result = this.db.run('DELETE FROM brand_reference_materials WHERE id = ?', [referenceId]);
     return result.changes > 0;
+  }
+
+  // ============================================================================
+  // SESSION REFERENCE MATERIALS OPERATIONS (Session-specific, not brand-specific)
+  // ============================================================================
+
+  addSessionReferenceMaterial(
+    sessionId: string,
+    options: {
+      materialType: SessionReferenceMaterial['material_type'];
+      title: string;
+      content: string;
+      sourceUrl?: string;
+      tags?: string[];
+      filePath?: string;
+      isFolder?: boolean;
+      folderDepth?: number;
+      filePatterns?: string[];
+    }
+  ): SessionReferenceMaterial {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    this.db.run(
+      `INSERT INTO session_reference_materials
+        (id, session_id, material_type, title, content, source_url, tags, file_path, is_folder, folder_depth, file_patterns, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        sessionId,
+        options.materialType,
+        options.title,
+        options.content,
+        options.sourceUrl || null,
+        JSON.stringify(options.tags || []),
+        options.filePath || null,
+        options.isFolder ? 1 : 0,
+        options.folderDepth ?? 3,
+        JSON.stringify(options.filePatterns || []),
+        now,
+      ]
+    );
+
+    return {
+      id,
+      session_id: sessionId,
+      material_type: options.materialType,
+      title: options.title,
+      content: options.content,
+      source_url: options.sourceUrl,
+      tags: JSON.stringify(options.tags || []),
+      file_path: options.filePath,
+      is_folder: options.isFolder ? 1 : 0,
+      folder_depth: options.folderDepth ?? 3,
+      file_patterns: JSON.stringify(options.filePatterns || []),
+      created_at: now,
+    };
+  }
+
+  getSessionReferenceMaterials(sessionId: string, materialType?: string): SessionReferenceMaterial[] {
+    if (materialType) {
+      return this.db
+        .query<SessionReferenceMaterial, [string, string]>(
+          'SELECT * FROM session_reference_materials WHERE session_id = ? AND material_type = ? ORDER BY created_at DESC'
+        )
+        .all(sessionId, materialType);
+    }
+    return this.db
+      .query<SessionReferenceMaterial, [string]>(
+        'SELECT * FROM session_reference_materials WHERE session_id = ? ORDER BY created_at DESC'
+      )
+      .all(sessionId);
+  }
+
+  getSessionReferenceMaterial(referenceId: string): SessionReferenceMaterial | null {
+    return this.db
+      .query<SessionReferenceMaterial, [string]>(
+        'SELECT * FROM session_reference_materials WHERE id = ?'
+      )
+      .get(referenceId) || null;
+  }
+
+  deleteSessionReferenceMaterial(referenceId: string): boolean {
+    const result = this.db.run('DELETE FROM session_reference_materials WHERE id = ?', [referenceId]);
+    return result.changes > 0;
+  }
+
+  deleteSessionReferenceMaterials(sessionId: string): boolean {
+    const result = this.db.run('DELETE FROM session_reference_materials WHERE session_id = ?', [sessionId]);
+    return result.changes > 0;
+  }
+
+  /**
+   * Copy all brand reference materials to a session
+   * Used when user wants to start with brand's templates
+   */
+  copyBrandRefsToSession(brandId: string, sessionId: string): SessionReferenceMaterial[] {
+    const brandRefs = this.getReferenceMaterials(brandId);
+    const copiedRefs: SessionReferenceMaterial[] = [];
+
+    for (const ref of brandRefs) {
+      const copied = this.addSessionReferenceMaterial(sessionId, {
+        materialType: ref.material_type,
+        title: ref.title,
+        content: ref.content,
+        sourceUrl: ref.source_url,
+        tags: typeof ref.tags === 'string' ? JSON.parse(ref.tags) : ref.tags,
+        filePath: ref.file_path,
+        isFolder: ref.is_folder === 1,
+        folderDepth: ref.folder_depth,
+        filePatterns: typeof ref.file_patterns === 'string' ? JSON.parse(ref.file_patterns) : ref.file_patterns,
+      });
+      copiedRefs.push(copied);
+    }
+
+    return copiedRefs;
   }
 
   // ============================================================================

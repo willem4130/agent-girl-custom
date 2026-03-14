@@ -111,6 +111,22 @@ export interface LongRunningCommandBlock {
   startedAt: number;
 }
 
+export interface ImageGalleryImage {
+  id: string;
+  prompt: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  imageUrl?: string;
+  localPath?: string;
+  errorMessage?: string;
+  aspectRatio?: string;
+}
+
+export interface ImageGalleryBlock {
+  type: 'image_gallery';
+  images: ImageGalleryImage[];
+  brandId: string;
+}
+
 export interface ToolResult {
   tool_use_id: string;
   type: 'tool_result';
@@ -119,7 +135,7 @@ export interface ToolResult {
 
 export interface AssistantMessage extends BaseMessage {
   type: 'assistant';
-  content: (TextBlock | ToolUseBlock | ThinkingBlock | LongRunningCommandBlock)[];
+  content: (TextBlock | ToolUseBlock | ThinkingBlock | LongRunningCommandBlock | ImageGalleryBlock)[];
   metadata?: {
     id: string;
     model: string;
